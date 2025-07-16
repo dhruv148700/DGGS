@@ -1,0 +1,13 @@
+Best Hyperparameter Configuration:
+Validation F1 Score: 0.6682272173465608
+
+Hyperparameters:
+- embedding_dim: 32
+- hidden_dim: 32
+- num_layers: 10
+- dropout: 0.02943105695360959
+- learning_rate: 0.008622415975216019
+- batch_size: 128
+- pos_weight: 2.25
+- threshold: 0.4998769870504005
+- patience: 10

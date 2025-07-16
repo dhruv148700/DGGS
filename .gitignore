@@ -1,0 +1,10 @@
+/dependency_graph/__pycache__/
+/dependency_graph/wandb
+/tests/__pycache__
+venv/
+env/
+__pycache__
+tests/__pycache__/
+*.bin
+*.log
+data_full/

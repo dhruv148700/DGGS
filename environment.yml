@@ -1,0 +1,24 @@
+name: gnn4aba_env
+channels:
+  - dglteam/label/cu121   # DGL CUDA 12.1 wheels
+  # - dglteam
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - numpy=1.26
+  - networkx
+  - pandas
+  - scikit-learn
+  - scipy
+  - matplotlib
+  - pytorch=2.2.2
+  - pytorch-cuda=12.1     # ensures PyTorch is built against CUDA 12.1
+  - dgl
+  - tqdm
+  - pip
+  - pip:
+    # Add any pip-only packages here, or leave empty if not needed     
+

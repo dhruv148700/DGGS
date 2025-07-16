@@ -1,0 +1,201 @@
+Starting training
+Train set: 13419, Val set: 1491, Test set 25/100: 40, All ICCMA Test set: 95 All instances Test set: 4970
+Epoch: 0, training loss = 1.0933
+Epoch 0: Val Set Loss = 0.8867 F1 = 0.4691 Accuracy = 0.6877 Precision = 0.4805 Recall = 0.4583 
+Epoch: 0, learning rate = 0.008622, counter: 0, best: 0.886749
+Epoch: 1, training loss = 0.8643
+Epoch 1: Val Set Loss = 0.8612 F1 = 0.4740 Accuracy = 0.7159 Precision = 0.5354 Recall = 0.4253 
+Epoch: 1, learning rate = 0.008622, counter: 0, best: 0.861207
+Epoch: 2, training loss = 0.8261
+Epoch 2: Val Set Loss = 0.8100 F1 = 0.5638 Accuracy = 0.6725 Precision = 0.4706 Recall = 0.7029 
+Epoch: 2, learning rate = 0.008622, counter: 0, best: 0.810023
+Epoch: 3, training loss = 0.7990
+Epoch 3: Val Set Loss = 0.7816 F1 = 0.5822 Accuracy = 0.6910 Precision = 0.4910 Recall = 0.7151 
+Epoch: 3, learning rate = 0.008622, counter: 0, best: 0.781627
+Epoch: 4, training loss = 0.7754
+Epoch 4: Val Set Loss = 0.7766 F1 = 0.5912 Accuracy = 0.6568 Precision = 0.4609 Recall = 0.8244 
+Epoch: 4, learning rate = 0.008622, counter: 0, best: 0.776624
+Epoch: 5, training loss = 0.7586
+Epoch 5: Val Set Loss = 0.7696 F1 = 0.5908 Accuracy = 0.6850 Precision = 0.4851 Recall = 0.7554 
+Epoch: 5, learning rate = 0.008622, counter: 0, best: 0.769612
+Epoch: 6, training loss = 0.7450
+Epoch 6: Val Set Loss = 0.7680 F1 = 0.5922 Accuracy = 0.6983 Precision = 0.4992 Recall = 0.7278 
+Epoch: 6, learning rate = 0.008622, counter: 0, best: 0.767986
+Epoch: 7, training loss = 0.7344
+Epoch 7: Val Set Loss = 0.7536 F1 = 0.6061 Accuracy = 0.6811 Precision = 0.4824 Recall = 0.8148 
+Epoch: 7, learning rate = 0.008622, counter: 0, best: 0.753576
+Epoch: 8, training loss = 0.7239
+Epoch 8: Val Set Loss = 0.7398 F1 = 0.6091 Accuracy = 0.6889 Precision = 0.4899 Recall = 0.8050 
+Epoch: 8, learning rate = 0.008622, counter: 0, best: 0.739775
+Epoch: 9, training loss = 0.7141
+Epoch 9: Val Set Loss = 0.7263 F1 = 0.6129 Accuracy = 0.7071 Precision = 0.5090 Recall = 0.7701 
+Epoch: 9, learning rate = 0.008622, counter: 0, best: 0.726338
+Epoch: 10, training loss = 0.7094
+Epoch 10: Val Set Loss = 0.7274 F1 = 0.6156 Accuracy = 0.7136 Precision = 0.5165 Recall = 0.7617 
+Epoch: 10, learning rate = 0.008622, counter: 1, best: 0.726338
+Epoch: 11, training loss = 0.7032
+Epoch 11: Val Set Loss = 0.7294 F1 = 0.6151 Accuracy = 0.6683 Precision = 0.4727 Recall = 0.8803 
+Epoch: 11, learning rate = 0.008622, counter: 2, best: 0.726338
+Epoch: 12, training loss = 0.7017
+Epoch 12: Val Set Loss = 0.7351 F1 = 0.6099 Accuracy = 0.6620 Precision = 0.4673 Recall = 0.8775 
+Epoch: 12, learning rate = 0.008622, counter: 3, best: 0.726338
+Epoch: 13, training loss = 0.6985
+Epoch 13: Val Set Loss = 0.7202 F1 = 0.6190 Accuracy = 0.6880 Precision = 0.4895 Recall = 0.8420 
+Epoch: 13, learning rate = 0.008622, counter: 0, best: 0.720222
+Epoch: 14, training loss = 0.6914
+Epoch 14: Val Set Loss = 0.7108 F1 = 0.6214 Accuracy = 0.6829 Precision = 0.4850 Recall = 0.8644 
+Epoch: 14, learning rate = 0.008622, counter: 0, best: 0.710836
+Epoch: 15, training loss = 0.6924
+Epoch 15: Val Set Loss = 0.7126 F1 = 0.6207 Accuracy = 0.6845 Precision = 0.4864 Recall = 0.8575 
+Epoch: 15, learning rate = 0.008622, counter: 1, best: 0.710836
+Epoch: 16, training loss = 0.6885
+Epoch 16: Val Set Loss = 0.7148 F1 = 0.6211 Accuracy = 0.6813 Precision = 0.4837 Recall = 0.8674 
+Epoch: 16, learning rate = 0.008622, counter: 2, best: 0.710836
+Epoch: 17, training loss = 0.6917
+Epoch 17: Val Set Loss = 0.7129 F1 = 0.6229 Accuracy = 0.6869 Precision = 0.4886 Recall = 0.8588 
+Epoch: 17, learning rate = 0.008622, counter: 3, best: 0.710836
+Epoch: 18, training loss = 0.6891
+Epoch 18: Val Set Loss = 0.7093 F1 = 0.6220 Accuracy = 0.6845 Precision = 0.4865 Recall = 0.8619 
+Epoch: 18, learning rate = 0.008622, counter: 0, best: 0.709293
+Epoch: 19, training loss = 0.6885
+Epoch 19: Val Set Loss = 0.7130 F1 = 0.6220 Accuracy = 0.6882 Precision = 0.4898 Recall = 0.8520 
+Epoch: 19, learning rate = 0.008622, counter: 1, best: 0.709293
+Epoch: 20, training loss = 0.6898
+Epoch 20: Val Set Loss = 0.7114 F1 = 0.6201 Accuracy = 0.6915 Precision = 0.4927 Recall = 0.8362 
+Epoch: 20, learning rate = 0.008622, counter: 2, best: 0.709293
+Epoch: 21, training loss = 0.6847
+Epoch 21: Val Set Loss = 0.7088 F1 = 0.6232 Accuracy = 0.6926 Precision = 0.4938 Recall = 0.8445 
+Epoch: 21, learning rate = 0.008622, counter: 0, best: 0.708816
+Epoch: 22, training loss = 0.6867
+Epoch 22: Val Set Loss = 0.7144 F1 = 0.6194 Accuracy = 0.6719 Precision = 0.4759 Recall = 0.8865 
+Epoch: 22, learning rate = 0.008622, counter: 1, best: 0.708816
+Epoch: 23, training loss = 0.6842
+Epoch 23: Val Set Loss = 0.7083 F1 = 0.6231 Accuracy = 0.6982 Precision = 0.4992 Recall = 0.8288 
+Epoch: 23, learning rate = 0.008622, counter: 0, best: 0.708254
+Epoch: 24, training loss = 0.6864
+Epoch 24: Val Set Loss = 0.7054 F1 = 0.6254 Accuracy = 0.7177 Precision = 0.5207 Recall = 0.7828 
+Epoch: 24, learning rate = 0.008622, counter: 0, best: 0.705372
+Epoch: 25, training loss = 0.6838
+Epoch 25: Val Set Loss = 0.7108 F1 = 0.6200 Accuracy = 0.6824 Precision = 0.4846 Recall = 0.8605 
+Epoch: 25, learning rate = 0.008622, counter: 1, best: 0.705372
+Epoch: 26, training loss = 0.6830
+Epoch 26: Val Set Loss = 0.7019 F1 = 0.6254 Accuracy = 0.7058 Precision = 0.5071 Recall = 0.8159 
+Epoch: 26, learning rate = 0.008622, counter: 0, best: 0.701888
+Epoch: 27, training loss = 0.6847
+Epoch 27: Val Set Loss = 0.7094 F1 = 0.6222 Accuracy = 0.6880 Precision = 0.4896 Recall = 0.8535 
+Epoch: 27, learning rate = 0.008622, counter: 1, best: 0.701888
+Epoch: 28, training loss = 0.6792
+Epoch 28: Val Set Loss = 0.7128 F1 = 0.6240 Accuracy = 0.6863 Precision = 0.4881 Recall = 0.8646 
+Epoch: 28, learning rate = 0.008622, counter: 2, best: 0.701888
+Epoch: 29, training loss = 0.6812
+Epoch 29: Val Set Loss = 0.7044 F1 = 0.6251 Accuracy = 0.7003 Precision = 0.5014 Recall = 0.8299 
+Epoch: 29, learning rate = 0.008622, counter: 3, best: 0.701888
+Epoch: 30, training loss = 0.6810
+Epoch 30: Val Set Loss = 0.7072 F1 = 0.6267 Accuracy = 0.6968 Precision = 0.4979 Recall = 0.8452 
+Epoch: 30, learning rate = 0.008622, counter: 4, best: 0.701888
+Epoch: 31, training loss = 0.6795
+Epoch 31: Val Set Loss = 0.7079 F1 = 0.6213 Accuracy = 0.6781 Precision = 0.4810 Recall = 0.8769 
+Epoch: 31, learning rate = 0.008622, counter: 5, best: 0.701888
+Epoch: 32, training loss = 0.6826
+Epoch 32: Val Set Loss = 0.7064 F1 = 0.6234 Accuracy = 0.6908 Precision = 0.4922 Recall = 0.8501 
+Epoch: 32, learning rate = 0.006467, counter: 0, best: 0.701888
+Epoch: 33, training loss = 0.6780
+Epoch 33: Val Set Loss = 0.7027 F1 = 0.6239 Accuracy = 0.6821 Precision = 0.4845 Recall = 0.8756 
+Epoch: 33, learning rate = 0.006467, counter: 1, best: 0.701888
+Epoch: 34, training loss = 0.6775
+Epoch 34: Val Set Loss = 0.7111 F1 = 0.6208 Accuracy = 0.6744 Precision = 0.4781 Recall = 0.8852 
+Epoch: 34, learning rate = 0.006467, counter: 2, best: 0.701888
+Epoch: 35, training loss = 0.6760
+Epoch 35: Val Set Loss = 0.7002 F1 = 0.6270 Accuracy = 0.6998 Precision = 0.5009 Recall = 0.8381 
+Epoch: 35, learning rate = 0.006467, counter: 0, best: 0.700172
+Epoch: 36, training loss = 0.6766
+Epoch 36: Val Set Loss = 0.7056 F1 = 0.6230 Accuracy = 0.6828 Precision = 0.4851 Recall = 0.8706 
+Epoch: 36, learning rate = 0.006467, counter: 1, best: 0.700172
+Epoch: 37, training loss = 0.6757
+Epoch 37: Val Set Loss = 0.7111 F1 = 0.6236 Accuracy = 0.6801 Precision = 0.4829 Recall = 0.8801 
+Epoch: 37, learning rate = 0.006467, counter: 2, best: 0.700172
+Epoch: 38, training loss = 0.6763
+Epoch 38: Val Set Loss = 0.7089 F1 = 0.6231 Accuracy = 0.6797 Precision = 0.4825 Recall = 0.8796 
+Epoch: 38, learning rate = 0.006467, counter: 3, best: 0.700172
+Epoch: 39, training loss = 0.6773
+Epoch 39: Val Set Loss = 0.7083 F1 = 0.6222 Accuracy = 0.6801 Precision = 0.4828 Recall = 0.8749 
+Epoch: 39, learning rate = 0.006467, counter: 4, best: 0.700172
+Epoch: 40, training loss = 0.6774
+Epoch 40: Val Set Loss = 0.7065 F1 = 0.6238 Accuracy = 0.6900 Precision = 0.4915 Recall = 0.8535 
+Epoch: 40, learning rate = 0.006467, counter: 5, best: 0.700172
+Epoch: 41, training loss = 0.6775
+Epoch 41: Val Set Loss = 0.7080 F1 = 0.6259 Accuracy = 0.6967 Precision = 0.4979 Recall = 0.8426 
+Epoch: 41, learning rate = 0.004850, counter: 0, best: 0.700172
+Epoch: 42, training loss = 0.6762
+Epoch 42: Val Set Loss = 0.7041 F1 = 0.6245 Accuracy = 0.6915 Precision = 0.4928 Recall = 0.8521 
+Epoch: 42, learning rate = 0.004850, counter: 1, best: 0.700172
+Epoch: 43, training loss = 0.6724
+Epoch 43: Val Set Loss = 0.6985 F1 = 0.6283 Accuracy = 0.7003 Precision = 0.5014 Recall = 0.8412 
+Epoch: 43, learning rate = 0.004850, counter: 0, best: 0.698476
+Epoch: 44, training loss = 0.6721
+Epoch 44: Val Set Loss = 0.6967 F1 = 0.6285 Accuracy = 0.7123 Precision = 0.5142 Recall = 0.8080 
+Epoch: 44, learning rate = 0.004850, counter: 0, best: 0.696740
+Epoch: 45, training loss = 0.6726
+Epoch 45: Val Set Loss = 0.7046 F1 = 0.6247 Accuracy = 0.6987 Precision = 0.4998 Recall = 0.8330 
+Epoch: 45, learning rate = 0.004850, counter: 1, best: 0.696740
+Epoch: 46, training loss = 0.6722
+Epoch 46: Val Set Loss = 0.7072 F1 = 0.6227 Accuracy = 0.6752 Precision = 0.4788 Recall = 0.8901 
+Epoch: 46, learning rate = 0.004850, counter: 2, best: 0.696740
+Epoch: 47, training loss = 0.6741
+Epoch 47: Val Set Loss = 0.7023 F1 = 0.6264 Accuracy = 0.7017 Precision = 0.5028 Recall = 0.8307 
+Epoch: 47, learning rate = 0.004850, counter: 3, best: 0.696740
+Epoch: 48, training loss = 0.6729
+Epoch 48: Val Set Loss = 0.7023 F1 = 0.6251 Accuracy = 0.6880 Precision = 0.4897 Recall = 0.8640 
+Epoch: 48, learning rate = 0.004850, counter: 4, best: 0.696740
+Epoch: 49, training loss = 0.6718
+Epoch 49: Val Set Loss = 0.6992 F1 = 0.6278 Accuracy = 0.7249 Precision = 0.5297 Recall = 0.7707 
+Epoch: 49, learning rate = 0.004850, counter: 5, best: 0.696740
+Epoch: 50, training loss = 0.6721
+Epoch 50: Val Set Loss = 0.7143 F1 = 0.6217 Accuracy = 0.6757 Precision = 0.4791 Recall = 0.8849 
+Epoch: 50, learning rate = 0.003638, counter: 0, best: 0.696740
+Epoch: 51, training loss = 0.6709
+Epoch 51: Val Set Loss = 0.7053 F1 = 0.6259 Accuracy = 0.6885 Precision = 0.4902 Recall = 0.8656 
+Epoch: 51, learning rate = 0.003638, counter: 1, best: 0.696740
+Epoch: 52, training loss = 0.6708
+Epoch 52: Val Set Loss = 0.7118 F1 = 0.6208 Accuracy = 0.6690 Precision = 0.4739 Recall = 0.9000 
+Epoch: 52, learning rate = 0.003638, counter: 2, best: 0.696740
+Epoch: 53, training loss = 0.6712
+Epoch 53: Val Set Loss = 0.6985 F1 = 0.6279 Accuracy = 0.6980 Precision = 0.4991 Recall = 0.8462 
+Epoch: 53, learning rate = 0.003638, counter: 3, best: 0.696740
+Epoch: 54, training loss = 0.6691
+Epoch 54: Val Set Loss = 0.7021 F1 = 0.6256 Accuracy = 0.6849 Precision = 0.4870 Recall = 0.8744 
+Epoch: 54, learning rate = 0.003638, counter: 4, best: 0.696740
+Early stopping triggered at epoch 54. Best validation loss: 0.6967 at epoch 44
+
+ICCMA results - 25/100 element files
+Test Set  F1 = 0.6955 Accuracy = 0.7128 Precision = 0.5710 Recall = 0.8894 
+
+Bootstrap Confidence Intervals (95%):
+Number of bootstrap samples: 10, Sample size: 30/40
+
+F1: 0.7209 ± 0.1025 [0.5199, 0.9219]
+Accuracy: 0.7302 ± 0.0705 [0.5919, 0.8684]
+Precision: 0.6250 ± 0.1327 [0.3649, 0.8852]
+Recall: 0.8663 ± 0.0529 [0.7625, 0.9701]
+
+ICCMA results - all element files
+Test Set  F1 = 0.6888 Accuracy = 0.7062 Precision = 0.5541 Recall = 0.9100 
+
+Bootstrap Confidence Intervals (95%):
+Number of bootstrap samples: 10, Sample size: 71/95
+
+F1: 0.6870 ± 0.1193 [0.4531, 0.9209]
+Accuracy: 0.7099 ± 0.0928 [0.5280, 0.8917]
+Precision: 0.5687 ± 0.1448 [0.2849, 0.8524]
+Recall: 0.8988 ± 0.0369 [0.8264, 0.9711]
+
+All Test results - iccma and generated
+Test Set  F1 = 0.6582 Accuracy = 0.7289 Precision = 0.5517 Recall = 0.8156 
+
+Bootstrap Confidence Intervals (95%):
+Number of bootstrap samples: 10, Sample size: 3727/4970
+
+F1: 0.6556 ± 0.0091 [0.6378, 0.6735]
+Accuracy: 0.7276 ± 0.0047 [0.7185, 0.7368]
+Precision: 0.5480 ± 0.0124 [0.5236, 0.5723]
+Recall: 0.8162 ± 0.0043 [0.8079, 0.8246]
