@@ -55,8 +55,8 @@ The codebase supports reproducible experiments, hyperparameter sweeps, and detai
 ```bash
 git clone https://github.com/yourusername/GNN4ABA.git
 cd GNN4ABA
-
-We recommend using [conda](https://docs.conda.io/en/latest/miniconda.html) for environment management. `environment.yml` is provided.
+```
+We recommend using [conda](https://docs.conda.io/en/latest/miniconda.html) for environment management since some of the packages have specific dependencies for Python 3.11. Config `environment.yml` is provided.
 
 Create and activate the environment:
 ```bash
