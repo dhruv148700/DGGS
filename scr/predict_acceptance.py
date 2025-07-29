@@ -2,9 +2,8 @@ import torch
 import dgl
 import argparse
 from dependency_graph import DependencyGraph
-from data_generation import reindex_nodes, create_hetero_graph
+from data_utils import reindex_nodes, create_hetero_graph, set_seeds
 from aba_inference import ABAInferenceEngine
-from data_utils import set_seeds
 import numpy as np
 
 def predict_cred_accept(model_type, aba_file, print_result=True, seed=42):

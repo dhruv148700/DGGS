@@ -1,5 +1,5 @@
-from dependency_graph.dependency_graph import DependencyGraph
-from data_generation import create_label_vector, reindex_nodes, create_hetero_graph
+from dependency_graph import DependencyGraph
+from data_utils import create_label_vector, reindex_nodes, create_hetero_graph
 from pathlib import Path
 
 TEST_DIR = Path(__file__).resolve().parent

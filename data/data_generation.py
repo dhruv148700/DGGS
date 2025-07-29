@@ -186,8 +186,7 @@ framework = create_depth_bounded_framework(sen, n_a, n_rph, n_spb, nonflat_coef,
 print_ASP(framework[0], framework[2], framework[3], "depth_bounded_benchmark.asp", "s0")
 
 '''
-def generate(asp_directory, aba_directory, identifier):
-    nonflat = True
+def generate(file_id, aba_directory, asp_directory=None):
 
     # number of atoms in total
     sens = [25,50,75,100,250,500,750,1000,2000,3000,4000,5000]
@@ -198,7 +197,6 @@ def generate(asp_directory, aba_directory, identifier):
     rule_size_max = [16, 8, 4, 2]
     # ratio of atoms that are assumptions
     asmpt_ratio = [0.25, 0.4, 0.5, 0.6, 0.75] 
-    d_bounds = [3, 6]
     # ratio of assumptions occurring as rule heads. For flat instances, just make nonflat_coef 0
     # (e.g. by setting the list nonflat_coefs to [0])
     nonflat_coefs = [0]
@@ -207,7 +205,6 @@ def generate(asp_directory, aba_directory, identifier):
             for rph_max in n_rules_max:
                 for spb_max in rule_size_max:
                     for c_prob in [0.01, 0.03, 0.05, 0.07, 0.09]: # 
-                    # for d_bound in d_bounds:
                         #if c_prob == 0: continue    # NOTE: only for atomic and depth bounded!
                         for nonflat_coef in nonflat_coefs:
                             for i in range(10):
@@ -218,13 +215,14 @@ def generate(asp_directory, aba_directory, identifier):
                                 n_spb = range(1,spb_max+1)
 
                                 # For atomic and basic
-                                asp_filename = f"{asp_directory}/{identifier}_s{sen}_c{cycle_prob}_n{nonflat_coef}_a{k}_r{rph_max}_b{spb_max}_{i}.asp"
-                                aba_filename = f"{aba_directory}/{identifier}_s{sen}_c{cycle_prob}_n{nonflat_coef}_a{k}_r{rph_max}_b{spb_max}_{i}.aba"
-                                # QUESTION: sentences same as atoms? 
-                                # to make sure this makes sense, n_a < sen
-                                # max(n_spb) <= n_sentences+n_assumptions
+                                aba_filename = f"{aba_directory}/{file_id}_s{sen}_c{cycle_prob}_n{nonflat_coef}_a{k}_r{rph_max}_b{spb_max}_{i}.aba"
                                 framework = create_framework(sen, n_a, n_rph, n_spb, cycle_prob, nonflat_coef)
-                                print_ASP(framework[0], framework[2], framework[3], asp_filename)
+                                
+                                # Only generate ASP files if asp_directory is provided
+                                if asp_directory:
+                                    asp_filename = f"{asp_directory}/{file_id}_s{sen}_c{cycle_prob}_n{nonflat_coef}_a{k}_r{rph_max}_b{spb_max}_{i}.asp"
+                                    print_ASP(framework[0], framework[2], framework[3], asp_filename)
+                                
                                 print_ABAF(sen,framework[0], framework[2], framework[3], aba_filename) 
                                 # print_ASP(framework[0], framework[2], framework[3], filename, "s0")
 
@@ -241,12 +239,12 @@ if __name__ == '__main__':
     # set a new seed per run to generate new examples 
     # for the flat and non-flat instances we used seeds 42,43,44,45
     parser = argparse.ArgumentParser()
-    parser.add_argument('-asp', '--aspdirectory')
-    parser.add_argument('-aba', '--abadirectory')
-    parser.add_argument('-i', '--identifier')
+    parser.add_argument('file_id', help='Root name for the output files (e.g., "flat" for flat_s10_c0.03_n0_a0.4_r2_b4_1.aba)')
+    parser.add_argument('-aba', '--abadirectory', required=True, help='Directory for ABA framework files')
+    parser.add_argument('-asp', '--aspdirectory', help='Directory for ASP files (optional)')
     args = parser.parse_args()
 
-    asp_directory = args.aspdirectory
+    file_id = args.file_id
     aba_directory = args.abadirectory
-    identifier = args.identifier
-    generate(asp_directory, aba_directory, identifier)
+    asp_directory = args.aspdirectory
+    generate(file_id, aba_directory, asp_directory)

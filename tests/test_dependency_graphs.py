@@ -1,6 +1,6 @@
 from dependency_graph.dependency_graph import DependencyGraph
 from pathlib import Path
-from data_generation import reindex_nodes
+from data_utils import reindex_nodes
 
 TEST_DIR = Path(__file__).resolve().parent
 

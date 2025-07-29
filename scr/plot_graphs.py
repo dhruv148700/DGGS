@@ -1,7 +1,7 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-from data_generation import reindex_nodes, create_hetero_graph
+from data_utils import reindex_nodes, create_hetero_graph
 import pathlib
 import numpy as np
 import sys

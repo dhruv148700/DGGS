@@ -92,11 +92,23 @@ python scr/extension_generator.py --model_type gcn --aba_file data/flat_s10_c0.0
 
 To reproduce the main experiments:
 
-1. **Generate Data:**
-   - Use `data/data_generation.py` to process ABA framework files and create DGL graph datasets.
+1. **Generate ABA Frameworks:**
+   - Use `data/data_generation.py` to create ABA framework files.
    - Example:
      ```bash
-     python data/data_generation.py
+     python data/data_generation.py flat -aba ./output_data_generated
+     ```
+   - Parameters:
+     - `file_id`: Root name for the output files (required, positional argument)
+     - `-aba`: Directory for ABA framework files (required)
+     - `-asp`: Directory for ASP files (optional) - only needed if you want ASP format files in addition to ABA files
+   - This creates ABA framework files that can be used for training. Only ABA files are needed for the data processing step.
+
+2. **Process Data:**
+   - Use `scr/data_utils.py` to process ABA framework files and create DGL graph datasets.
+   - Example:
+     ```bash
+     python scr/data_utils.py
      ```
    - This will create `.bin` files for training and testing in the root directory.
 
@@ -128,7 +140,7 @@ To reproduce the main experiments:
 ```text
 GNN4ABA/
 |-- data/                        # Data generation scripts and train/test splits
-|   |-- data_generation.py
+|   |-- data_generation.py       # ABA framework generation script
 |   |-- data.tar.gz
 |   |-- train_test_splits/
 |-- data_full/                   # Full input data and labels
@@ -138,7 +150,7 @@ GNN4ABA/
 |   |-- train.py                 # Main training script
 |   |-- hyperparam_tune.py       # Hyperparameter sweep script
 |   |-- hyperparam_trainer.py    # Training utilities
-|   |-- data_utils.py            # Data utilities
+|   |-- data_utils.py            # Data processing and utilities
 |   |-- dependency_graph.py      # ABA dependency graph construction
 |   |-- GCN_learnable.py         # GCN model definition
 |   |-- GAT_learnable.py         # GAT model definition
