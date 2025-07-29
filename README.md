@@ -139,26 +139,33 @@ To reproduce the main experiments:
 
 ```text
 GNN4ABA/
-|-- data/                        # Data generation scripts and train/test splits
+|-- data/                        # Data generation and sample files
 |   |-- data_generation.py       # ABA framework generation script
-|   |-- data.tar.gz
-|   |-- train_test_splits/
-|-- data_full/                   # Full input data and labels
-|-- results_final_gcn/           # GCN model results, logs, and plots
-|-- results_final_gat/           # GAT model results, logs, and plots
+|   |-- train_test_splits/       # CSVs with Train/test split details
+|   |-- flat_s10_c0.03_n0_a0.4_r2_b4_1.aba  # Sample ABA framework
+|   |-- output_flat_s10_c0.03_n0_a0.4_r2_b4_1.aba  # Sample output
+|-- results_final_gcn/           # GCN model results and artifacts
+|-- results_final_gat/           # GAT model results and artifacts
 |-- scr/                         # Source code
 |   |-- train.py                 # Main training script
 |   |-- hyperparam_tune.py       # Hyperparameter sweep script
 |   |-- hyperparam_trainer.py    # Training utilities
 |   |-- data_utils.py            # Data processing and utilities
 |   |-- dependency_graph.py      # ABA dependency graph construction
-|   |-- GCN_learnable.py         # GCN model definition
-|   |-- GAT_learnable.py         # GAT model definition
+|   |-- GCN.py                   # Basic GCN model definition
+|   |-- GCN_learnable.py         # Learnable GCN model definition
+|   |-- GAT_learnable.py         # Learnable GAT model definition
+|   |-- gcn_learnable_params     # GCN hyperparameter configurations
+|   |-- gat_learnable_params     # GAT hyperparameter configurations
 |   |-- plot_metrics.py          # Plotting utilities
 |   |-- plot_graphs.py           # Graph visualization
 |   |-- predict_acceptance.py    # Acceptance prediction script
 |   |-- extension_generator.py   # Extension construction script
+|   |-- aba_inference.py         # ABA inference engine
+|   |-- hetero_graph_utils.py    # Heterogeneous graph utilities
+|   |-- metrics.py               # Evaluation metrics
 |-- tests/                       # Unit tests and example outputs
+|-- model_architecture.png       # Model architecture diagram
 |-- environment.yml              # Conda environment file
 |-- README.md                    # This file
 ```
