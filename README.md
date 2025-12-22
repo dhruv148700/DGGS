@@ -170,3 +170,13 @@ GNN4ABA/
 |-- README.md                    # This file
 ```
 
+## Reference
+If you are using this code, please cite our paper
+```
+@inproceedings{AAAI-26_gehlot,
+    title     = {{Heterogeneous Graph Neural Networks for Assumption-Based Argumentation}},
+    author={Gehlot, Preesha and Rapberger, Anna and Russo, Fabrizio and Toni, Francesca},
+    booktitle={The Fortieth AAAI Conference on Artificial Intelligence},
+    year={2026},
+    url={https://openreview.net/forum?id=uWqGrMX69j}
+  }
