@@ -131,3 +131,20 @@ def find_all_d_separations_sets(G, verbose=True, debug=False):
                         septests.append(f"dep({x},{y},{s_str}).")
                 depth += 1
     return septests
+
+def get_matrix_from_arrow_set(arrow_set, n_nodes):
+    """
+    Get the adjacency matrix from the arrow set.
+    Args:
+        arrow_set: set
+            The arrow set to be converted to an adjacency matrix
+        n_nodes: int
+            The number of nodes in the graph
+    Returns:
+        B_est: np.array
+            The adjacency matrix of the graph
+    """
+    B_est = np.zeros((n_nodes, n_nodes), dtype=int)
+    for node1, node2 in arrow_set:
+        B_est[node1, node2] = 1
+    return B_est
