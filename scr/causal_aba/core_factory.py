@@ -1,11 +1,12 @@
 # Original solver code
 
-from typing import Set, FrozenSet
+from typing import Set, FrozenSet, List
 from itertools import combinations
 import scr.causal_aba.atoms as atoms
 import scr.causal_aba.assumptions as assums
 from aspforaba.src.aspforaba import ABASolver
-from scr.causal_aba.utils import unique_product, powerset
+from scr.causal_aba.enums import Fact
+from scr.causal_aba.utils import unique_product
 
 
 class CoreABASPSolverFactory:
@@ -88,7 +89,7 @@ class CoreABASPSolverFactory:
     def _add_collider_descendant_definition_rules(solver, X, Y, Z, N):
         solver.add_rule(atoms.descendant_of_collider(N, X, Y, Z), [atoms.collider(X, Y, Z), atoms.dpath(Y, N)])
 
-    def create_core_solver(self, edges_to_remove: Set[FrozenSet[int]]):
+    def create_core_solver(self, edges_to_remove: Set[FrozenSet[int]], facts: List[Fact]):
         """
         Create a core solver for the ABASP problem.
         It contains all graph edge assumptions, colliders and corresponding rules.
@@ -123,8 +124,9 @@ class CoreABASPSolverFactory:
                         if N not in {X, Y, Z}:  # X, Y, Z, N unique
                             self._add_collider_descendant_definition_rules(solver, X, Y, Z, N)
         
+        unique_S = {frozenset(fact.node_set) for fact in facts}
         for X, Y in combinations(range(self.n_nodes), 2):
-            for S in powerset(range(self.n_nodes)):
+            for S in unique_S:
                 self._add_non_blocking_rules(solver, X, Y, S, self.n_nodes)
 
 

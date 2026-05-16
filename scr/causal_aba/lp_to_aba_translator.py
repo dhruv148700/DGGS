@@ -129,7 +129,7 @@ class CoreToABABuilder:
             [atoms.collider(X, Y, Z), atoms.dpath(Y, N)],
         )
 
-    def build_core(self, collector: _ABATextCollector, edges_to_remove: Set[FrozenSet[int]]) -> None:
+    def build_core(self, collector: _ABATextCollector, edges_to_remove: Set[FrozenSet[int]], facts: List[Fact]) -> None:
         # Mirrors CoreABASPSolverFactory.create_core_solver
 
         for X, Y in unique_product(range(self.n_nodes), repeat=2):
@@ -153,8 +153,9 @@ class CoreToABABuilder:
                         if N not in {X, Y, Z}:
                             self._add_collider_descendant_definition_rules(collector, X, Y, Z, N)
 
+        unique_S = {frozenset(fact.node_set) for fact in facts}
         for X, Y in combinations(range(self.n_nodes), 2):
-            for S in powerset(range(self.n_nodes)):
+            for S in unique_S:
                 self._add_non_blocking_rules(collector, X, Y, S, self.n_nodes)
 
 
@@ -233,7 +234,7 @@ class LPToABATranslator:
                     edges_to_remove.add(frozenset({fact.node1, fact.node2}))
 
         # 1) core rules/assumptions
-        self._core_builder.build_core(collector, edges_to_remove)
+        self._core_builder.build_core(collector, edges_to_remove, facts)
 
         # 2) fact-dependent additions (paths, indep assumptions, blocked_path, etc.)
         graph = nx.complete_graph(self.n_nodes)

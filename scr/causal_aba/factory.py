@@ -84,9 +84,9 @@ class ABASPSolverFactory(CoreABASPSolverFactory):
             graph.remove_edges_from(edges_to_remove)
             # provide edges to remove to core factory so that it removes them from the assumptions as well
             frozenset_edges_to_remove = {frozenset(edge) for edge in edges_to_remove}
-            solver = self.create_core_solver(frozenset_edges_to_remove)
+            solver = self.create_core_solver(frozenset_edges_to_remove, facts)
         else:
-            solver = self.create_core_solver({})
+            solver = self.create_core_solver({}, facts)
 
         all_paths = dict()
         for fact in facts:
