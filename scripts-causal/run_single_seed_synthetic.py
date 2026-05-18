@@ -17,13 +17,13 @@ import numpy as np
 import networkx as nx
 from itertools import combinations
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "scr"))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 
 SEED        = 42
-D           = 7       # number of nodes (keep small: CausalABA assumptions grow exponentially)
-S0          = 7       # expected number of edges
+D           = 4       # number of nodes (keep small: CausalABA assumptions grow exponentially)
+S0          = 5       # expected number of edges
 SAMPLE_SIZE = 10_000
 ALPHA       = 0.05
 GRAPH_TYPES = ["ER", "SF"]   # (graph_type arg)

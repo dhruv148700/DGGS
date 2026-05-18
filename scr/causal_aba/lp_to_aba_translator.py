@@ -365,7 +365,7 @@ def lp_facts_to_aba_file(
     n_nodes: int,
     out_path: str,
     optimise_remove_edges: bool = True,
-) -> None:
+) -> ABAFramework:
     translator = LPToABATranslator(n_nodes=n_nodes, optimise_remove_edges=optimise_remove_edges)
     fw = translator.translate_facts(facts)
     write_aba_file(fw, out_path)
@@ -373,3 +373,5 @@ def lp_facts_to_aba_file(
     scores_path = os.path.splitext(out_path)[0] + ".scores.json"
     with open(scores_path, "w") as f:
         json.dump(serialise_score_map(fw.score_map), f, indent=2)
+
+    return fw

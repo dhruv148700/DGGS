@@ -1,5 +1,5 @@
-from GCN_learnable import GCNLearnableModel
-from GAT_learnable import GATLearnableModel
+from scr.GCN_learnable import GCNLearnableModel
+from scr.GAT_learnable import GATLearnableModel
 import torch 
 
 DEFAULTS = {
@@ -73,7 +73,7 @@ class ABAInferenceEngine:
         
         # Load trained model
         self.model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
-        self.model.to(device)
+        self.model.to(device).float()
         self.model.eval()
         print(f"Model ({model_type}) loaded successfully on {device}")
     

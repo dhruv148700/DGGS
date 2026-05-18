@@ -16,7 +16,9 @@ import numpy as np
 # Files inside scr/ use bare imports (e.g. `from dependency_graph import ...`)
 # that assume scr/ itself is on sys.path. Adding it here lets those work without
 # having to rewrite every import site.
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "scr"))
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, REPO_ROOT)
+sys.path.insert(0, os.path.join(REPO_ROOT, "scr"))
 
 # ─── Setup ────────────────────────────────────────────────────────────────────
 

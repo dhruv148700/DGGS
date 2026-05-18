@@ -7,8 +7,8 @@ import torch.nn.functional as F
 import numpy as np
 import os
 import sys
-from dependency_graph import DependencyGraph
-from plot_graphs import plot_hetero_graph
+from scr.dependency_graph import DependencyGraph
+from scr.plot_graphs import plot_hetero_graph
 
 def reindex_nodes(dep_graph):
     """Reindex nodes by type for heterograph creation"""

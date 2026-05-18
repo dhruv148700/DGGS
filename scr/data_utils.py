@@ -4,8 +4,7 @@ import torch
 import dgl 
 import os 
 import sys
-sys.path.append('../')  # Adjust the path as necessary to import from the parent directory
-from dependency_graph import DependencyGraph
+from scr.dependency_graph import DependencyGraph
 import networkx as nx
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D

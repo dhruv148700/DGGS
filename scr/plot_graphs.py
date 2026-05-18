@@ -1,18 +1,11 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-from data_utils import reindex_nodes, create_hetero_graph
+from scr.data_utils import reindex_nodes, create_hetero_graph
 import pathlib
 import numpy as np
 import sys
-
-# 1.  Point to the parent directory …/dependency_graph
-PARENT_DIR = pathlib.Path(__file__).resolve().parents[1]
-
-# 2.  Push that path on the *front* of sys.path so imports see it first
-sys.path.insert(0, str(PARENT_DIR))
-
-from dependency_graph import DependencyGraph
+from scr.dependency_graph import DependencyGraph
 
 
 def plot_hetero_graph(data_dict, rule_mapping, assmpt_mapping, non_assmpt_mapping):

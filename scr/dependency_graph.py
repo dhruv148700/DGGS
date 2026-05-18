@@ -38,8 +38,8 @@ class DependencyGraph:
             if line.startswith("r "):
                 components = line.split()[1:]
                 head, body = str(components[0]), components[1:]
-                body = list(set(body))
-                rule = (head, body)
+                body = sorted(set(body))
+                rule = (head, tuple(body))
 
                 if rule not in self.rules.values():
                     self.rules[rule_index] = (head, body)
@@ -106,8 +106,8 @@ class DependencyGraph:
         # remove the contrary of the attacked assumption 
         del self.contrary[attacked_assmpt]
         
-        # remove any rule that had the attacked assumption within it 
-        rules_with_attacked_assmpts = [(rule_index, head, body) for rule_index, (head, body) in self.rules.items() if attacked_assmpt in body] 
+        # remove any rule that had the attacked assumption within it (in body or as head)
+        rules_with_attacked_assmpts = [(rule_index, head, body) for rule_index, (head, body) in self.rules.items() if attacked_assmpt in body or head == attacked_assmpt]
         for (rule_index, head, body) in rules_with_attacked_assmpts:
             del self.rules[rule_index]
             # since a dummy element is created for a rule, when the rule is deleted, 
@@ -154,10 +154,15 @@ class DependencyGraph:
         #print(f"rules with dummies {self.contrary}")
 
         # ---- STEP 2----
-        # remove the assumption from the assumptions 
+        # remove the assumption from the assumptions
         self.assumptions.remove(assumption)
-        
-        # remove the assumption from the body of any rule 
+
+        # remove any rule that derives the removed assumption as its head
+        rules_with_assumption_head = [i for i, (head, body) in self.rules.items() if head == assumption]
+        for i in rules_with_assumption_head:
+            del self.rules[i]
+
+        # remove the assumption from the body of any rule
         assmpt_in_body = [(i, head, body) for i, (head, body) in self.rules.items() if assumption in body]
 
         #print(f"assumption in bodies {assmpt_in_body}")
@@ -196,9 +201,12 @@ class DependencyGraph:
                 if not rule:
                     continue
                 else:
-                    (fact, body) = rule 
+                    (fact, body) = rule
                 # print(f"{fact=}")
                 # since the head is a fact, remove the head from non_assumptions
+                # (guard against the case where the head is an assumption, not a non-assumption)
+                if fact not in self.non_assumptions:
+                    continue
                 self.non_assumptions.remove(fact)
                 # Remove any rule that concludes the fact, since it is not necessary, and
                 # remove the head from all rule bodies. 

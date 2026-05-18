@@ -1,6 +1,6 @@
-from aba_inference import ABAInferenceEngine
-from hetero_graph_utils import create_graph, update_graph
-from metrics import find_best_matching_extension, aggregate_metrics, print_detailed_results, print_aggregate_results
+from scr.aba_inference import ABAInferenceEngine
+from scr.hetero_graph_utils import create_graph, update_graph
+from scr.metrics import find_best_matching_extension, aggregate_metrics, print_detailed_results, print_aggregate_results
 import os
 import time
 import json

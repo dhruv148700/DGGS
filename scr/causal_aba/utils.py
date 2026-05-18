@@ -132,6 +132,22 @@ def find_all_d_separations_sets(G, verbose=True, debug=False):
                 depth += 1
     return septests
 
+def parse_arrow(assumption):
+    """Parse an 'arr_X_Y' assumption string into (X, Y) node indices."""
+    parts = assumption.split("_")
+    return int(parts[1]), int(parts[2])
+
+
+def get_arrows_from_model(model):
+    """Extract (X, Y) arrow pairs from an AssumptionSet returned by enumerate_extensions."""
+    arrows = set()
+    for assumption in model.assumptions:
+        if assumption.startswith("arr_"):
+            node1, node2 = parse_arrow(assumption)
+            arrows.add((node1, node2))
+    return frozenset(arrows)
+
+
 def get_matrix_from_arrow_set(arrow_set, n_nodes):
     """
     Get the adjacency matrix from the arrow set.
