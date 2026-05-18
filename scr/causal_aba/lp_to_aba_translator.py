@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass, field
 from itertools import combinations
 from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tuple
@@ -15,11 +17,13 @@ from scr.causal_aba.utils import unique_product, powerset
 
 Rule = Tuple[str, List[str]]  # (head, body_tokens)
 
+
 @dataclass
 class ABAFramework:
     assumptions: Set[str] = field(default_factory=set)
     contrary: Dict[str, str] = field(default_factory=dict)
     rules: List[Rule] = field(default_factory=list)
+    score_map: Dict[str, float] = field(default_factory=dict)  # element_name → score
 
     def all_elements(self) -> Set[str]:
         elems: Set[str] = set()
@@ -36,17 +40,29 @@ class _ABATextCollector:
     def __init__(self) -> None:
         self.framework = ABAFramework()
         self._rule_set: Set[Tuple[str, Tuple[str, ...]]] = set()  # normalized dedupe
+        self._current_score: Optional[float] = None  # set per-fact; None for scaffold
+
+    def _record(self, name) -> None:
+        """Record name → score into score_map using highest-wins policy."""
+        if self._current_score is None:
+            return
+        if name not in self.framework.score_map or self._current_score > self.framework.score_map[name]:
+            self.framework.score_map[name] = self._current_score
 
     @staticmethod
     def _tok(x) -> str:
         return str(x)
 
     def add_assumption(self, a) -> None:
-        self.framework.assumptions.add(self._tok(a))
+        tok = self._tok(a)
+        self.framework.assumptions.add(tok)
+        self._record(tok)
 
     def add_contrary(self, a, c) -> None:
         a_tok, c_tok = self._tok(a), self._tok(c)
         self.framework.contrary[a_tok] = c_tok
+        self._record(a_tok)
+        self._record(c_tok)
 
     def add_rule(self, head, body: Sequence) -> None:
         h = self._tok(head)
@@ -54,14 +70,16 @@ class _ABATextCollector:
 
         # Mirror GNN loader behavior: body dedupe via set (orderless)
         body_toks = list(set(body_toks))
+        body_toks = sorted(body_toks)
 
         # Dedupe rules robustly (since body order is irrelevant after set())
-        key = (h, tuple(sorted(body_toks)))
+        key = (h, tuple(body_toks))
         if key in self._rule_set:
             return
         self._rule_set.add(key)
 
         self.framework.rules.append((h, body_toks))
+        self._record(key)  # keyed by (head, body) tuple, not just head
 
 
 class CoreToABABuilder:
@@ -94,13 +112,21 @@ class CoreToABABuilder:
         collector.add_rule(assums.contrary(assums.arr(Y, X)), [atoms.dpath(X, Y)])
 
     @staticmethod
-    def _add_non_blocking_rules(collector: _ABATextCollector, X, Y, S, n_nodes: int) -> None:
+    def _add_non_blocking_rules(
+        collector: _ABATextCollector,
+        X, Y, S,
+        n_nodes: int,
+        s_score: Optional[float] = None,
+    ) -> None:
         for N in S:
             if N not in {X, Y}:
+                collector._current_score = s_score
                 collector.add_rule(atoms.non_blocking(N, X, Y, S), [atoms.collider(X, N, Y)])
+                collector._current_score = None
 
         for N in set(range(n_nodes)) - set(S):
             if N not in {X, Y}:
+                collector._current_score = s_score
                 collector.add_rule(atoms.non_blocking(N, X, Y, S), [atoms.not_collider(X, N, Y)])
 
                 for Z in S:
@@ -109,6 +135,7 @@ class CoreToABABuilder:
                             atoms.non_blocking(N, X, Y, S),
                             [atoms.collider(X, N, Y), atoms.descendant_of_collider(Z, X, N, Y)],
                         )
+                collector._current_score = None
 
     @staticmethod
     def _add_direct_path_definition_rules(collector: _ABATextCollector, X, Y, Z) -> None:
@@ -129,8 +156,15 @@ class CoreToABABuilder:
             [atoms.collider(X, Y, Z), atoms.dpath(Y, N)],
         )
 
-    def build_core(self, collector: _ABATextCollector, edges_to_remove: Set[FrozenSet[int]], facts: List[Fact]) -> None:
+    def build_core(
+        self,
+        collector: _ABATextCollector,
+        edges_to_remove: Set[FrozenSet[int]],
+        facts: List[Fact],
+        xy_s_to_max_score: Dict[Tuple[FrozenSet, FrozenSet], float],
+    ) -> None:
         # Mirrors CoreABASPSolverFactory.create_core_solver
+        # _current_score is None throughout — all scaffold elements stay unscored
 
         for X, Y in unique_product(range(self.n_nodes), repeat=2):
             if frozenset({X, Y}) in edges_to_remove:
@@ -156,7 +190,10 @@ class CoreToABABuilder:
         unique_S = {frozenset(fact.node_set) for fact in facts}
         for X, Y in combinations(range(self.n_nodes), 2):
             for S in unique_S:
-                self._add_non_blocking_rules(collector, X, Y, S, self.n_nodes)
+                self._add_non_blocking_rules(
+                    collector, X, Y, S, self.n_nodes,
+                    s_score=xy_s_to_max_score.get((frozenset({X, Y}), S)),  # max score across all facts sharing this (X, Y, S)
+                )
 
 
 class LPToABATranslator:
@@ -174,6 +211,8 @@ class LPToABATranslator:
 
     @staticmethod
     def _add_path_definition_rules(collector: _ABATextCollector, paths, X, Y) -> None:
+        # path(X,Y,id) contains no S — structural scaffold, scored 0.0
+        # called with _current_score = None
         for path_id, my_path in enumerate(paths):
             collector.add_rule(
                 atoms.path(X, Y, path_id),
@@ -233,13 +272,20 @@ class LPToABATranslator:
                 if fact.relation == RelationEnum.indep:
                     edges_to_remove.add(frozenset({fact.node1, fact.node2}))
 
-        # 1) core rules/assumptions
-        self._core_builder.build_core(collector, edges_to_remove, facts)
+        # pre-compute max score per unique (X,Y,S) for non_blocking nodes
+        xy_s_to_max_score: Dict[Tuple[FrozenSet, FrozenSet], float] = {}
+        for fact in facts:
+            key = (frozenset({fact.node1, fact.node2}), frozenset(fact.node_set))
+            if key not in xy_s_to_max_score or fact.score > xy_s_to_max_score[key]:
+                xy_s_to_max_score[key] = fact.score
 
-        # 2) fact-dependent additions (paths, indep assumptions, blocked_path, etc.)
+        # 1) core rules/assumptions — _current_score is None throughout
+        self._core_builder.build_core(collector, edges_to_remove, facts, xy_s_to_max_score)
+
+        # 2) fact-dependent additions
         graph = nx.complete_graph(self.n_nodes)
         if self.optimise_remove_edges:
-            graph.remove_edges_from({tuple(e) for e in edges_to_remove})  # safe conversion
+            graph.remove_edges_from({tuple(e) for e in edges_to_remove})
 
         all_paths: Dict[Tuple[int, int], List[Tuple[int, ...]]] = {}
         for fact in facts:
@@ -253,16 +299,21 @@ class LPToABATranslator:
             if paths is None:
                 raise RuntimeError(f"No paths found between {X} and {Y} in the graph.")
 
+            # path rules have no S — structural scaffold, must be added before setting score
             self._add_path_definition_rules(collector, paths, X, Y)
-            self._add_indep_assumptions(collector, X, Y, S)
 
+            # all remaining additions are S-parameterised — set score now
+            collector._current_score = fact.score
+
+            self._add_indep_assumptions(collector, X, Y, S)
             for path_id, my_path in enumerate(paths):
                 self._add_blocked_path_assumptions(collector, path_id, X, Y, S)
                 self._add_active_path_rules(collector, path_id, my_path, X, Y, S)
                 self._add_dependence_rules(collector, path_id, X, Y, S)
-
             self._add_independence_rules(collector, paths, X, Y, S)
             self._add_fact(collector, fact)
+
+            collector._current_score = None  # reset after each fact
 
         return collector.framework
 
@@ -289,6 +340,25 @@ def write_aba_file(framework: ABAFramework, out_path: str) -> None:
         f.write("\n".join(lines))
 
 
+def serialise_score_map(score_map: Dict) -> Dict[str, float]:
+    """
+    Flatten score_map to JSON-serialisable string keys.
+
+    Keys from add_assumption/add_contrary are plain strings → kept as-is.
+    Keys from add_rule are (head, body_tuple) tuples → joined as "head|body1|body2".
+    Empty-body rules produce "head|" (trailing pipe), disambiguating them from
+    the assumption entry for the same name.
+    """
+    serialised = {}
+    for key, score in score_map.items():
+        if isinstance(key, tuple):
+            head, body = key
+            serialised[head + "|" + "|".join(body)] = score
+        else:
+            serialised[key] = score
+    return serialised
+
+
 def lp_facts_to_aba_file(
     facts: List[Fact],
     *,
@@ -299,3 +369,7 @@ def lp_facts_to_aba_file(
     translator = LPToABATranslator(n_nodes=n_nodes, optimise_remove_edges=optimise_remove_edges)
     fw = translator.translate_facts(facts)
     write_aba_file(fw, out_path)
+
+    scores_path = os.path.splitext(out_path)[0] + ".scores.json"
+    with open(scores_path, "w") as f:
+        json.dump(serialise_score_map(fw.score_map), f, indent=2)
