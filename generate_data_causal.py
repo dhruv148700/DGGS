@@ -22,8 +22,11 @@ applies directly.
 
 Place at the GNN4ABA repo root.
 
-    python generate_data_causal.py            # full sweep
-    python generate_data_causal.py --dry-run  # 2 / cell, n<=6, 600s timeout, summary
+    python generate_data_causal.py                    # full sweep (local)
+    python generate_data_causal.py --dry-run          # 2/cell, n<=6, 600s timeout
+    python generate_data_causal.py --chunk-id 0 \    # single Condor job
+        --graph-type er --n 6 --density 0.7 \
+        --alpha 0.01 --start-idx 0 --end-idx 30
 """
 
 import argparse
@@ -63,9 +66,15 @@ BA_M_VALUES       = [1, 2, 3]
 ALPHA_LEVELS      = [0.01, 0.05, 0.1]
 SAMPLES_PER_CELL  = 300
 
-INPUT_DIR     = "input_data_causal"
-OUTPUT_DIR    = "output_data_causal"
-MANIFEST_PATH = "causal_manifest.json"
+# n=6 cells are sharded into smaller chunks to avoid long runtimes and
+# reduce the impact of Condor preemption.
+SHARD_SIZE        = 30   # instances per shard for n=6 cells
+N6_SHARD_THRESHOLD = 6   # shard cells where n >= this value
+
+INPUT_DIR      = "input_data_causal"
+OUTPUT_DIR     = "output_data_causal"
+MANIFEST_DIR   = "manifests"           # partial manifests written here
+MANIFEST_PATH  = "causal_manifest.json"  # final merged manifest
 
 # Silence verbose INFO chatter from the fact-removal loop during bulk runs.
 logging.basicConfig(level=logging.WARNING, format="%(message)s")
@@ -110,8 +119,6 @@ def run_instance(graph_type, n, density_or_m, alpha, seed):
         s0 = er_s0(n, density_or_m)
         dag_kind = "ER"
     elif graph_type == "ba":
-        # simulate_dag SF branch: ig.Graph.Barabasi uses m = round(s0 / d).
-        # So set s0 = m * n to recover the requested BA parameter exactly.
         s0 = int(density_or_m) * n
         dag_kind = "SF"
     else:
@@ -119,13 +126,9 @@ def run_instance(graph_type, n, density_or_m, alpha, seed):
 
     B_true = simulate_dag(d=n, s0=s0, graph_type=dag_kind)
 
-    # simulate_data_and_run_PC expects a nx.DiGraph with "X{i+1}" labels —
-    # mirrors the convention in run_single_seed_synthetic_aba.py.
     G_true = nx.from_numpy_array(B_true, create_using=nx.DiGraph)
     G_true = nx.relabel_nodes(G_true, {i: f"X{i+1}" for i in range(n)})
 
-    # Single PC call (discrete data, 10_000 samples hardcoded inside the
-    # helper); cg.sepset feeds facts_from_sepset — no second pass.
     _data, cg = simulate_data_and_run_PC(G_true, alpha=alpha, seed=seed)
 
     facts = facts_from_sepset(cg, n, alpha)
@@ -153,12 +156,171 @@ def fname(graph_type, n, density, m, alpha, i):
 
 
 def iter_cells():
+    """Yield (graph_type, n, density, m, alpha) for every cell in the grid."""
     for n in NODE_COUNTS:
         for alpha in ALPHA_LEVELS:
             for density in ER_EDGE_DENSITIES:
                 yield "er", n, density, None, alpha
             for m in BA_M_VALUES:
                 yield "ba", n, None, m, alpha
+
+
+# ─── Condor job enumeration ───────────────────────────────────────────────────
+
+def iter_jobs():
+    """
+    Yield one dict per Condor job describing its parameters.
+
+    n < N6_SHARD_THRESHOLD: one job per cell (300 instances).
+    n >= N6_SHARD_THRESHOLD: SHARD_SIZE instances per job.
+
+    Each dict has keys:
+        chunk_id, graph_type, n, density, m, alpha, start_idx, end_idx
+    """
+    chunk_id = 0
+    for graph_type, n, density, m, alpha in iter_cells():
+        if n >= N6_SHARD_THRESHOLD:
+            # Split into shards of SHARD_SIZE
+            for start in range(0, SAMPLES_PER_CELL, SHARD_SIZE):
+                end = min(start + SHARD_SIZE, SAMPLES_PER_CELL)
+                yield {
+                    "chunk_id":   chunk_id,
+                    "graph_type": graph_type,
+                    "n":          n,
+                    "density":    density,
+                    "m":          m,
+                    "alpha":      alpha,
+                    "start_idx":  start,
+                    "end_idx":    end,
+                }
+                chunk_id += 1
+        else:
+            yield {
+                "chunk_id":   chunk_id,
+                "graph_type": graph_type,
+                "n":          n,
+                "density":    density,
+                "m":          m,
+                "alpha":      alpha,
+                "start_idx":  0,
+                "end_idx":    SAMPLES_PER_CELL,
+            }
+            chunk_id += 1
+
+
+def total_jobs():
+    return sum(1 for _ in iter_jobs())
+
+
+# ─── Single chunk runner (used by Condor jobs) ────────────────────────────────
+
+def run_chunk(chunk_id, graph_type, n, density, m, alpha,
+              start_idx, end_idx, timeout_seconds=0):
+    """
+    Run instances [start_idx, end_idx) for one cell.
+
+    Checkpointing: skips instances whose output .aba file already exists,
+    so resubmitted jobs after preemption don't redo completed work.
+
+    Writes results incrementally to a partial manifest in MANIFEST_DIR so
+    that work is not lost if the job is killed mid-run.
+    """
+    os.makedirs(INPUT_DIR,   exist_ok=True)
+    os.makedirs(OUTPUT_DIR,  exist_ok=True)
+    os.makedirs(MANIFEST_DIR, exist_ok=True)
+
+    density_or_m = density if graph_type == "er" else m
+    partial_manifest_path = os.path.join(MANIFEST_DIR, f"manifest_{chunk_id}.json")
+
+    # Load any entries already written (in case of resubmission after preemption)
+    if os.path.exists(partial_manifest_path):
+        with open(partial_manifest_path) as fh:
+            manifest_entries = json.load(fh)
+    else:
+        manifest_entries = []
+
+    # Track which instance indices are already done via existing output files
+    already_done = set()
+    for entry in manifest_entries:
+        # Extract i from the abaf filename
+        abaf = entry["abaf"]
+        basename = os.path.basename(abaf)          # causal_er_n6_d0.7_mna_a0.01_i17.aba
+        i_part = basename.rsplit("_i", 1)[-1]      # "17.aba"
+        i_val = int(i_part.replace(".aba", ""))
+        already_done.add(i_val)
+
+    cell_label = (
+        f"{graph_type.upper()} n={n} "
+        f"{'density' if graph_type == 'er' else 'm'}={density_or_m} "
+        f"alpha={alpha} [{start_idx}:{end_idx}]"
+    )
+    print(f"[chunk {chunk_id}] {cell_label}", flush=True)
+
+    for i in range(start_idx, end_idx):
+        seed = BASE_SEED + i
+
+        input_path  = os.path.join(INPUT_DIR,  fname(graph_type, n, density, m, alpha, i))
+        output_path = os.path.join(OUTPUT_DIR, "output_" + fname(graph_type, n, density, m, alpha, i))
+
+        # ── Checkpoint: skip if already completed ──────────────────────────
+        if i in already_done:
+            print(f"  i={i} SKIP (already done)", flush=True)
+            continue
+
+        # Also check output file directly in case manifest was lost but
+        # files were written (e.g. partial preemption)
+        if os.path.exists(output_path) and os.path.exists(input_path):
+            print(f"  i={i} SKIP (files exist)", flush=True)
+            continue
+
+        print(f"  i={i} seed={seed} ...", end=" ", flush=True)
+
+        t_start = time.time()
+        try:
+            with time_limit(timeout_seconds):
+                facts, credulous, models, fact_idx, solve_s = run_instance(
+                    graph_type, n, density_or_m, alpha, seed,
+                )
+        except _InstanceTimeout:
+            print("TIMEOUT", flush=True)
+            continue
+        except Exception as e:
+            print(f"ERROR: {e}", flush=True)
+            continue
+
+        total_s = time.time() - t_start
+        print(f"ok ({total_s:.2f}s, solve {solve_s:.2f}s)", flush=True)
+
+        fw = lp_facts_to_aba_file(facts, n_nodes=n, out_path=input_path)
+        write_label_file(models, output_path)
+
+        arr_credulous = [a for a in credulous if a.startswith("arr_")]
+        scores_path = input_path.replace(".aba", ".scores.json")
+
+        entry = {
+            "graph_type":      graph_type,
+            "n_nodes":         n,
+            "density_or_m":    density_or_m,
+            "alpha":           alpha,
+            "abaf":            input_path,
+            "labels":          output_path,
+            "scores":          scores_path,
+            "has_accepted":    len(credulous) > 0,
+            "n_atoms":         len(fw.all_elements()),
+            "n_assumptions":   len(fw.assumptions),
+            "n_credulous":     len(credulous),
+            "n_credulous_arr": len(arr_credulous),
+            "fact_idx":        fact_idx,
+            "n_facts_total":   len(facts),
+            "no_removal":      fact_idx == len(facts),
+        }
+        manifest_entries.append(entry)
+
+        # ── Incremental manifest write: safe against preemption ────────────
+        with open(partial_manifest_path, "w") as fh:
+            json.dump(manifest_entries, fh, indent=2)
+
+    print(f"[chunk {chunk_id}] done — {len(manifest_entries)} entries in partial manifest", flush=True)
 
 
 # ─── Dry-run summary ──────────────────────────────────────────────────────────
@@ -191,7 +353,7 @@ def print_dry_run_summary(per_node):
         )
 
 
-# ─── Main sweep ───────────────────────────────────────────────────────────────
+# ─── Full local sweep (unchanged from original) ───────────────────────────────
 
 def run(dry_run=False):
     os.makedirs(INPUT_DIR,  exist_ok=True)
@@ -230,7 +392,7 @@ def run(dry_run=False):
             t_start = time.time()
             try:
                 with time_limit(timeout_seconds):
-                    facts, credulous, models, _, solve_s = run_instance(
+                    facts, credulous, models, fact_idx, solve_s = run_instance(
                         graph_type, n, density_or_m, alpha, seed,
                     )
             except _InstanceTimeout:
@@ -251,6 +413,7 @@ def run(dry_run=False):
             stats["n_assumptions"].append(len(fw.assumptions))
 
             arr_credulous = [a for a in credulous if a.startswith("arr_")]
+            scores_path = input_path.replace(".aba", ".scores.json")
             manifest.append({
                 "graph_type":      graph_type,
                 "n_nodes":         n,
@@ -258,11 +421,15 @@ def run(dry_run=False):
                 "alpha":           alpha,
                 "abaf":            input_path,
                 "labels":          output_path,
+                "scores":          scores_path,
                 "has_accepted":    len(credulous) > 0,
                 "n_atoms":         len(fw.all_elements()),
                 "n_assumptions":   len(fw.assumptions),
                 "n_credulous":     len(credulous),
                 "n_credulous_arr": len(arr_credulous),
+                "fact_idx":        fact_idx,
+                "n_facts_total":   len(facts),
+                "no_removal":      fact_idx == len(facts),
             })
 
     with open(MANIFEST_PATH, "w") as fh:
@@ -275,12 +442,55 @@ def run(dry_run=False):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument(
-        "--dry-run", action="store_true",
-        help="3 instances per cell, 60s timeout, print per-node summary table.",
-    )
+
+    # Local sweep mode
+    p.add_argument("--dry-run", action="store_true",
+                   help="2 instances per cell, 600s timeout, print summary.")
+
+    # Condor chunk mode — all required together
+    p.add_argument("--chunk-id",   type=int,   default=None,
+                   help="Condor process index (0-based). Enables chunk mode.")
+    p.add_argument("--graph-type", choices=["er", "ba"], default=None)
+    p.add_argument("--n",          type=int,   default=None)
+    p.add_argument("--density",    type=float, default=None)
+    p.add_argument("--m",          type=int,   default=None)
+    p.add_argument("--alpha",      type=float, default=None)
+    p.add_argument("--start-idx",  type=int,   default=None)
+    p.add_argument("--end-idx",    type=int,   default=None)
+
+    # Utility: print the total number of Condor jobs and exit
+    p.add_argument("--print-n-jobs", action="store_true",
+                   help="Print total number of Condor jobs and exit.")
+
     args = p.parse_args()
-    run(dry_run=args.dry_run)
+
+    if args.print_n_jobs:
+        print(total_jobs())
+        return
+
+    if args.chunk_id is not None:
+        # Condor chunk mode: all cell params must be provided
+        missing = [f for f in ["graph_type", "n", "alpha", "start_idx", "end_idx"]
+                   if getattr(args, f.replace("-", "_")) is None]
+        if missing:
+            p.error(f"Chunk mode requires: {missing}")
+        if args.graph_type == "er" and args.density is None:
+            p.error("--density required for graph-type er")
+        if args.graph_type == "ba" and args.m is None:
+            p.error("--m required for graph-type ba")
+
+        run_chunk(
+            chunk_id    = args.chunk_id,
+            graph_type  = args.graph_type,
+            n           = args.n,
+            density     = args.density,
+            m           = args.m,
+            alpha       = args.alpha,
+            start_idx   = args.start_idx,
+            end_idx     = args.end_idx,
+        )
+    else:
+        run(dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
