@@ -16,9 +16,17 @@ dependencies:
   - matplotlib
   - pytorch=2.2.2
   - pytorch-cuda=12.1     # ensures PyTorch is built against CUDA 12.1
-  - dgl
   - tqdm
+  - torchdata=0.7.1
   - pip
   - pip:
+    - dgl -f https://data.dgl.ai/wheels/torch-2.2/cu121/repo.html
+    - pgmpy<1.1 --no-deps  # Install pgmpy without dependencies to avoid conflicts
+    - pydot
+    - causal-learn
+    - clingo
+    - rustworkx
+    - cdt
+    - gcastle
     # Add any pip-only packages here, or leave empty if not needed     
 
