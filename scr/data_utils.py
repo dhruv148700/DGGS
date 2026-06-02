@@ -1,9 +1,11 @@
+import json
 import numpy as np
 import random
-import torch 
-import dgl 
-import os 
+import torch
+import dgl
+import os
 import sys
+from pathlib import Path
 from scr.dependency_graph import DependencyGraph
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -303,13 +305,279 @@ def create_label_vector(file, mapping):
     array = np.zeros(len(mapping.keys()))
     with open(file, "r") as f:
         text = f.read().split("\n")
-    
+
     for line in text:
         if line != '':
             index = mapping[line.strip()]
             array[index] = 1
-    
+
     return array
+
+
+def create_causal_label_vector(file, mapping):
+    """
+    Credulous-acceptance label vector for causal ABA data.
+
+    Label files written by write_label_file in generate_data_causal.py have
+    one line per stable extension, with assumption names comma-separated.
+    An assumption is labelled 1 if it appears in ANY extension (credulous).
+    Assumption names absent from mapping are silently skipped (they may be
+    non-assumption atoms or names not present after graph construction).
+    """
+    array = np.zeros(len(mapping.keys()))
+    with open(file, "r") as f:
+        text = f.read().split("\n")
+
+    for line in text:
+        line = line.strip()
+        if not line:
+            continue
+        for assumption in line.split(","):
+            assumption = assumption.strip()
+            if assumption and assumption in mapping:
+                array[mapping[assumption]] = 1
+
+    return array
+
+
+def create_tier_label_vector(tier_path: str, mapping: dict) -> np.ndarray:
+    """Binary label vector from a pre-computed tier_labels JSON.
+
+    skeptical or credulous → 1  (credulously accepted)
+    rejected or no_ext     → 0
+    """
+    with open(tier_path) as fh:
+        tiers = json.load(fh)
+    array = np.zeros(len(mapping))
+    for name, idx in mapping.items():
+        if tiers.get(name, "rejected") in ("skeptical", "credulous"):
+            array[idx] = 1
+    return array
+
+
+def _load_atom_scores(f_scores: str) -> dict:
+    """Load the atom-level scores from a .scores.json file.
+
+    Only string-keyed entries are returned (rule-tuple keys use '|' as
+    separator and map to rule structures, not atoms).
+    Returns an empty dict if the file is missing or unreadable.
+    """
+    try:
+        import json as _json
+        with open(f_scores) as fh:
+            raw = _json.load(fh)
+        return {k: v for k, v in raw.items() if "|" not in k}
+    except Exception:
+        return {}
+
+
+def _build_causal_graph(f_abaf: str, f_labels: str, f_scores: str = None, f_tier: str = None):
+    """Build one DGL heterograph from a single .aba / labels file pair.
+
+    When f_scores is provided the CI-test reliability score for each atom is
+    appended as a third node feature (0.0 for atoms not present in the score
+    map, i.e. arr_*, noe_*, and structural non-assumptions). Node feature
+    tensors are then shape (n, 3) instead of (n, 2).
+
+    Raises on any parse or graph-construction error so the caller can
+    record a structured failure rather than crashing the whole build.
+    """
+    dep_graph = DependencyGraph()
+    dep_graph.create_from_file(f_abaf)
+    dep_graph.create_dependency_graph()
+
+    rules_mapping, assmpt_mapping, non_assmpt_mapping = reindex_nodes(dep_graph)
+    features = dep_graph.calculate_node_features(assmpt_mapping | non_assmpt_mapping)
+    hetero_graph, _ = create_hetero_graph(
+        dep_graph.graph, rules_mapping, assmpt_mapping, non_assmpt_mapping
+    )
+
+    atom_scores = _load_atom_scores(f_scores) if f_scores else {}
+    n_feat = 3 if f_scores is not None else 2
+
+    assmpt_feat_arr = np.zeros((len(assmpt_mapping), n_feat))
+    for key in assmpt_mapping:
+        idx = assmpt_mapping[key]
+        assmpt_feat_arr[idx, :2] = features[key]
+        if f_scores is not None:
+            assmpt_feat_arr[idx, 2] = atom_scores.get(key, 0.0)
+    hetero_graph.nodes["assmpt"].data["features"] = torch.tensor(
+        assmpt_feat_arr, dtype=torch.float32
+    )
+
+    non_assmpt_feat_arr = np.zeros((len(non_assmpt_mapping), n_feat))
+    for key in non_assmpt_mapping:
+        idx = non_assmpt_mapping[key]
+        non_assmpt_feat_arr[idx, :2] = features[key]
+        if f_scores is not None:
+            non_assmpt_feat_arr[idx, 2] = atom_scores.get(key, 0.0)
+    hetero_graph.nodes["non_assmpt"].data["features"] = torch.tensor(
+        non_assmpt_feat_arr, dtype=torch.float32
+    )
+
+    hetero_graph.nodes["rule"].data["features"] = torch.tensor(
+        np.random.randn(len(rules_mapping), n_feat), dtype=torch.float32
+    )
+
+    if f_tier is not None:
+        label_vector = create_tier_label_vector(f_tier, assmpt_mapping)
+    else:
+        label_vector = create_causal_label_vector(f_labels, assmpt_mapping)
+    hetero_graph.nodes["assmpt"].data["label"] = torch.tensor(
+        label_vector, dtype=torch.float32
+    )
+    return hetero_graph
+
+
+def load_causal_dataset_from_manifest(
+    entries: list,
+    base_dir: str = ".",
+    use_scores: bool = False,
+    tier_dir: str = None,
+) -> tuple:
+    """Build DGL heterographs for a list of manifest entries.
+
+    Uses the exact 'abaf' and 'labels' paths from each entry rather than
+    inferring the label filename from the input filename.
+
+    Args:
+        entries:    list of manifest dicts with at minimum 'abaf' and 'labels'.
+        base_dir:   root for resolving relative paths (default: current dir).
+        use_scores: if True and the entry has a 'scores' field, pass the
+                    .scores.json path to _build_causal_graph so CI-test
+                    reliability scores are added as a 3rd node feature.
+                    Graphs will have feature tensors of shape (n, 3) instead
+                    of (n, 2). Default False for backwards compatibility.
+        tier_dir:   directory containing per-instance tier_labels JSONs
+                    (default: <base_dir>/dataset/tier_labels).  When a
+                    tier JSON exists for an entry it is used for labels
+                    (skeptical|credulous→1, rejected→0) instead of the raw
+                    extension file, so output_data_causal is not needed.
+
+    Returns:
+        (graphs, metadata_list, failed_entries) where graphs and metadata_list
+        are parallel lists (same order, failures excluded), and failed_entries
+        is a list of {'entry', 'error', 'stage'} dicts.
+    """
+    if tier_dir is None:
+        tier_dir = os.path.join(base_dir, "dataset", "tier_labels")
+
+    graphs: list = []
+    metadata_list: list = []
+    failed_entries: list = []
+    n_total = len(entries)
+
+    for idx, entry in enumerate(entries):
+        if idx % 100 == 0:
+            print(f"  [{idx}/{n_total}] {entry.get('instance_id', '?')}")
+
+        def _resolve(p):
+            return p if os.path.isabs(p) else os.path.join(base_dir, p)
+
+        f_abaf   = _resolve(entry["abaf"])
+        f_labels = _resolve(entry["labels"])
+        f_scores = _resolve(entry["scores"]) if use_scores and entry.get("scores") else None
+
+        key    = Path(f_abaf).stem
+        f_tier = os.path.join(tier_dir, f"{key}.json")
+        if not os.path.isfile(f_tier):
+            f_tier = None  # fall back to raw labels file
+
+        missing = []
+        if not os.path.isfile(f_abaf):
+            missing.append((f_abaf, "abaf"))
+        if f_tier is None and not os.path.isfile(f_labels):
+            missing.append((f_labels, "labels"))
+        if missing:
+            failed_entries.append({
+                "entry": entry,
+                "error": "; ".join(f"not found: {p}" for p, _ in missing),
+                "stage": "file_check",
+            })
+            continue
+
+        try:
+            g = _build_causal_graph(f_abaf, f_labels, f_scores, f_tier)
+            graphs.append(g)
+            metadata_list.append(entry)
+        except Exception as exc:
+            failed_entries.append({
+                "entry": entry,
+                "error": str(exc),
+                "stage": "graph_build",
+            })
+
+    print(
+        f"load_causal_dataset_from_manifest: "
+        f"{len(graphs)} built, {len(failed_entries)} failed / {n_total} total"
+    )
+    return graphs, metadata_list, failed_entries
+
+
+def load_causal_dataset(input_directory, output_directory, dataset_files=None):
+    """
+    Like load_dataset but uses create_causal_label_vector for credulous-
+    acceptance labels written in the comma-separated-per-extension format
+    produced by generate_data_causal.py.
+    """
+    if dataset_files:
+        input_files = []
+        with open(dataset_files, "r") as fh:
+            for line in fh:
+                clean = line.strip()
+                if clean:
+                    input_files.append(clean)
+    else:
+        input_files = os.listdir(input_directory)
+
+    graphs = []
+    n_total = len(input_files)
+    for idx, filename in enumerate(input_files):
+        if idx % 50 == 0:
+            print(f"  [{idx}/{n_total}] {filename}")
+        f_input  = os.path.join(input_directory, filename)
+        f_output = os.path.join(output_directory, f"output_{filename}")
+
+        if not os.path.isfile(f_input) or not os.path.isfile(f_output):
+            print(f"skipping {filename}")
+            continue
+
+        dep_graph = DependencyGraph()
+        dep_graph.create_from_file(f_input)
+        dep_graph.create_dependency_graph()
+
+        rules_mapping, assmpt_mapping, non_assmpt_mapping = reindex_nodes(dep_graph)
+        features = dep_graph.calculate_node_features(assmpt_mapping | non_assmpt_mapping)
+        hetero_graph, _ = create_hetero_graph(
+            dep_graph.graph, rules_mapping, assmpt_mapping, non_assmpt_mapping
+        )
+
+        assmpt_feat_arr = np.empty((len(assmpt_mapping), 2))
+        for key in assmpt_mapping:
+            assmpt_feat_arr[assmpt_mapping[key], :] = features[key]
+        hetero_graph.nodes["assmpt"].data["features"] = torch.tensor(
+            assmpt_feat_arr, dtype=torch.float32
+        )
+
+        non_assmpt_feat_arr = np.empty((len(non_assmpt_mapping), 2))
+        for key in non_assmpt_mapping:
+            non_assmpt_feat_arr[non_assmpt_mapping[key], :] = features[key]
+        hetero_graph.nodes["non_assmpt"].data["features"] = torch.tensor(
+            non_assmpt_feat_arr, dtype=torch.float32
+        )
+
+        hetero_graph.nodes["rule"].data["features"] = torch.tensor(
+            np.random.randn(len(rules_mapping), 2), dtype=torch.float32
+        )
+
+        label_vector = create_causal_label_vector(f_output, assmpt_mapping)
+        hetero_graph.nodes["assmpt"].data["label"] = torch.tensor(
+            label_vector, dtype=torch.float32
+        )
+        graphs.append(hetero_graph)
+
+    print(f"Loaded {len(graphs)} causal graphs")
+    return graphs
 
 
 def print_hetero_graph(g):

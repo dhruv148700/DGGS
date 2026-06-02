@@ -112,8 +112,7 @@ class DependencyGraph:
             del self.rules[rule_index]
             # since a dummy element is created for a rule, when the rule is deleted, 
             # the dummy element and its contrary should also be deleted. 
-            dummy_element = next((item for item in body if item.startswith("dummy")), None)
-            if dummy_element:
+            for dummy_element in [item for item in body if item.startswith("dummy")]:
                 self.assumptions.remove(dummy_element)
                 dummy_contrary = self.contrary[dummy_element]
                 del self.contrary[dummy_element]
@@ -143,6 +142,7 @@ class DependencyGraph:
             new_dummy_elem = f"dummy_{self.dummy_var_counter}"
             new_dummy_contrary = f"dummy_contrary_{self.dummy_var_counter}"
             self.dummy_var_counter += 1
+            body = list(body)
             body.append(new_dummy_elem)
             new_head = new_dummy_contrary
             self.rules[i] = (new_head, body)
@@ -168,9 +168,10 @@ class DependencyGraph:
         #print(f"assumption in bodies {assmpt_in_body}")
         
         for (i, head, body) in assmpt_in_body:
+            body = list(body)
             body.remove(assumption)
-            # if the body only consists of dummy elements now, remove all traces of dummy elements 
-            # and delete the rule. 
+            # if the body is exactly one dummy, then dummy_contrary :- dummy is a
+            # self-attacking cycle — the assumption unconditionally derives its own contrary.
             if len(body) == 1 and body[0].startswith("dummy"):
                 print("reached invalid ABAF")
                 # in this case, we are basically left with a rule that derives the contrary
