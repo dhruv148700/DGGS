@@ -6,19 +6,19 @@ Bulk causal-ABA data generation for GNN training.
 Pipeline (per instance):
   simulate_dag → simulate_data_and_run_PC (discrete, 10_000 samples,
        single PC call — sepset reused) → facts_from_sepset
-  → lp_facts_to_aba_file              (writes input_data_causal/*.aba)
-  → get_credulous_assumptions_from_facts (ASPforABA, ST semantics)
-  → write one extension per line       (writes output_data_causal/*.aba)
+  → get_probes_from_facts  (binary search over sorted fact prefixes,
+       records up to 4 probes: initial_full, easy_sat, boundary_sat,
+       boundary_unsat)
+  → lp_facts_to_aba_file   (per probe, using that probe's fact subset)
+  → write_label_file        (per probe; empty file for UNSAT probes)
 
-Parameter grid is iterated separately for ER (over densities) and BA
-(over m-values). A 2:1 accepted:none balancing pass is applied after
-the full sweep. Output filenames follow
+Each probe becomes one manifest entry and one input/output file pair.
+Output filenames follow
 
-  input_data_causal/causal_{gt}_n{n}_d{d}_m{m}_a{alpha}_i{i}.aba
-  output_data_causal/output_causal_{gt}_n{n}_d{d}_m{m}_a{alpha}_i{i}.aba
+  input_data_causal/causal_{gt}_n{n}_d{d}_m{m}_a{alpha}_i{i}_{role}.aba
+  output_data_causal/output_causal_{gt}_n{n}_d{d}_m{m}_a{alpha}_i{i}_{role}.aba
 
-so the existing load_dataset() pairing convention in scr/data_utils.py
-applies directly.
+where role ∈ {full, esat, bsat, busat}.
 
 Place at the GNN4ABA repo root.
 
@@ -51,7 +51,7 @@ from ArgCausalDisco.utils.data_utils import (
 from ArgCausalDisco.utils.helpers import random_stability
 from scr.causal_aba.abapc import (
     facts_from_sepset,
-    get_credulous_assumptions_from_facts,
+    get_probes_from_facts,
 )
 from scr.causal_aba.enums import SemanticEnum
 from scr.causal_aba.lp_to_aba_translator import lp_facts_to_aba_file
@@ -64,12 +64,19 @@ NODE_COUNTS       = [3, 4, 5, 6]
 ER_EDGE_DENSITIES = [0.3, 0.5, 0.7]
 BA_M_VALUES       = [1, 2, 3]
 ALPHA_LEVELS      = [0.01, 0.05, 0.1]
-SAMPLES_PER_CELL  = 300
+SAMPLES_PER_CELL  = 100
 
 # n=6 cells are sharded into smaller chunks to avoid long runtimes and
 # reduce the impact of Condor preemption.
-SHARD_SIZE        = 30   # instances per shard for n=6 cells
+SHARD_SIZE        = 20   # instances per shard for n=6 cells
 N6_SHARD_THRESHOLD = 6   # shard cells where n >= this value
+
+ROLE_CODES = {
+    "initial_full":   "full",
+    "easy_sat":       "esat",
+    "boundary_sat":   "bsat",
+    "boundary_unsat": "busat",
+}
 
 INPUT_DIR      = "input_data_causal"
 OUTPUT_DIR     = "output_data_causal"
@@ -134,12 +141,10 @@ def run_instance(graph_type, n, density_or_m, alpha, seed):
     facts = facts_from_sepset(cg, n, alpha)
 
     t_solve = time.time()
-    credulous, models, fact_idx = get_credulous_assumptions_from_facts(
-        facts, n, semantics=SemanticEnum.ST,
-    )
+    probes = get_probes_from_facts(facts, n, semantics=SemanticEnum.ST)
     solve_seconds = time.time() - t_solve
 
-    return facts, credulous, models, fact_idx, solve_seconds
+    return probes, solve_seconds
 
 
 def write_label_file(models, path):
@@ -149,10 +154,11 @@ def write_label_file(models, path):
             fh.write(",".join(sorted(model.assumptions)) + "\n")
 
 
-def fname(graph_type, n, density, m, alpha, i):
+def fname(graph_type, n, density, m, alpha, i, role=None):
     d_str = f"d{density}" if density is not None else "dna"
     m_str = f"m{m}"       if m       is not None else "mna"
-    return f"causal_{graph_type}_n{n}_{d_str}_{m_str}_a{alpha}_i{i}.aba"
+    role_str = f"_{ROLE_CODES[role]}" if role else ""
+    return f"causal_{graph_type}_n{n}_{d_str}_{m_str}_a{alpha}_i{i}{role_str}.aba"
 
 
 def iter_cells():
@@ -165,13 +171,24 @@ def iter_cells():
                 yield "ba", n, None, m, alpha
 
 
+# Maps (graph_type, n, density_or_m, alpha) → unique seed offset for that cell,
+# so that seed = BASE_SEED + _CELL_OFFSETS[...] + i is globally unique across
+# every (cell, instance) pair. Without this, cells sharing the same i but
+# different alpha would get identical seeds → identical DAG and data, since
+# simulate_discrete_data re-seeds numpy with the explicit seed parameter.
+_CELL_OFFSETS = {
+    (gt, n, d if gt == "er" else m, alpha): idx * SAMPLES_PER_CELL
+    for idx, (gt, n, d, m, alpha) in enumerate(iter_cells())
+}
+
+
 # ─── Condor job enumeration ───────────────────────────────────────────────────
 
 def iter_jobs():
     """
     Yield one dict per Condor job describing its parameters.
 
-    n < N6_SHARD_THRESHOLD: one job per cell (300 instances).
+    n < N6_SHARD_THRESHOLD: one job per cell (SAMPLES_PER_CELL instances).
     n >= N6_SHARD_THRESHOLD: SHARD_SIZE instances per job.
 
     Each dict has keys:
@@ -219,8 +236,11 @@ def run_chunk(chunk_id, graph_type, n, density, m, alpha,
     """
     Run instances [start_idx, end_idx) for one cell.
 
-    Checkpointing: skips instances whose output .aba file already exists,
+    Checkpointing: skips instances that appear in the partial manifest,
     so resubmitted jobs after preemption don't redo completed work.
+    Instances are written atomically — the manifest is updated only after
+    all probes for an instance are written, so a preempted instance restarts
+    from scratch.
 
     Writes results incrementally to a partial manifest in MANIFEST_DIR so
     that work is not lost if the job is killed mid-run.
@@ -239,14 +259,18 @@ def run_chunk(chunk_id, graph_type, n, density, m, alpha,
     else:
         manifest_entries = []
 
-    # Track which instance indices are already done via existing output files
+    # Track which instance indices are fully done (all probes written + manifest updated).
     already_done = set()
     for entry in manifest_entries:
-        # Extract i from the abaf filename
-        abaf = entry["abaf"]
-        basename = os.path.basename(abaf)          # causal_er_n6_d0.7_mna_a0.01_i17.aba
-        i_part = basename.rsplit("_i", 1)[-1]      # "17.aba"
-        i_val = int(i_part.replace(".aba", ""))
+        if "instance_id" in entry:
+            # New format: "causal_er_n6_d0.7_mna_a0.01_i17" → 17
+            i_val = int(entry["instance_id"].rsplit("_i", 1)[-1])
+        else:
+            # Legacy integer format or abaf-based fallback
+            abaf = entry["abaf"]
+            basename = os.path.basename(abaf)       # causal_er_n6_d0.7_mna_a0.01_i17_bsat.aba
+            i_part = basename.rsplit("_i", 1)[-1]   # "17_bsat.aba" or "17.aba"
+            i_val = int(i_part.split("_")[0].replace(".aba", ""))
         already_done.add(i_val)
 
     cell_label = (
@@ -257,20 +281,11 @@ def run_chunk(chunk_id, graph_type, n, density, m, alpha,
     print(f"[chunk {chunk_id}] {cell_label}", flush=True)
 
     for i in range(start_idx, end_idx):
-        seed = BASE_SEED + i
-
-        input_path  = os.path.join(INPUT_DIR,  fname(graph_type, n, density, m, alpha, i))
-        output_path = os.path.join(OUTPUT_DIR, "output_" + fname(graph_type, n, density, m, alpha, i))
+        seed = BASE_SEED + _CELL_OFFSETS[(graph_type, n, density_or_m, alpha)] + i
 
         # ── Checkpoint: skip if already completed ──────────────────────────
         if i in already_done:
             print(f"  i={i} SKIP (already done)", flush=True)
-            continue
-
-        # Also check output file directly in case manifest was lost but
-        # files were written (e.g. partial preemption)
-        if os.path.exists(output_path) and os.path.exists(input_path):
-            print(f"  i={i} SKIP (files exist)", flush=True)
             continue
 
         print(f"  i={i} seed={seed} ...", end=" ", flush=True)
@@ -278,7 +293,7 @@ def run_chunk(chunk_id, graph_type, n, density, m, alpha,
         t_start = time.time()
         try:
             with time_limit(timeout_seconds):
-                facts, credulous, models, fact_idx, solve_s = run_instance(
+                probes, solve_s = run_instance(
                     graph_type, n, density_or_m, alpha, seed,
                 )
         except _InstanceTimeout:
@@ -289,32 +304,37 @@ def run_chunk(chunk_id, graph_type, n, density, m, alpha,
             continue
 
         total_s = time.time() - t_start
-        print(f"ok ({total_s:.2f}s, solve {solve_s:.2f}s)", flush=True)
+        print(f"ok ({total_s:.2f}s, solve {solve_s:.2f}s, {len(probes)} probes)", flush=True)
 
-        fw = lp_facts_to_aba_file(facts, n_nodes=n, out_path=input_path)
-        write_label_file(models, output_path)
+        instance_id = os.path.splitext(fname(graph_type, n, density, m, alpha, i))[0]
 
-        arr_credulous = [a for a in credulous if a.startswith("arr_")]
-        scores_path = input_path.replace(".aba", ".scores.json")
+        for probe in probes:
+            role = probe.role
+            input_path  = os.path.join(INPUT_DIR,  fname(graph_type, n, density, m, alpha, i, role))
+            output_path = os.path.join(OUTPUT_DIR, "output_" + fname(graph_type, n, density, m, alpha, i, role))
 
-        entry = {
-            "graph_type":      graph_type,
-            "n_nodes":         n,
-            "density_or_m":    density_or_m,
-            "alpha":           alpha,
-            "abaf":            input_path,
-            "labels":          output_path,
-            "scores":          scores_path,
-            "has_accepted":    len(credulous) > 0,
-            "n_atoms":         len(fw.all_elements()),
-            "n_assumptions":   len(fw.assumptions),
-            "n_credulous":     len(credulous),
-            "n_credulous_arr": len(arr_credulous),
-            "fact_idx":        fact_idx,
-            "n_facts_total":   len(facts),
-            "no_removal":      fact_idx == len(facts),
-        }
-        manifest_entries.append(entry)
+            fw = lp_facts_to_aba_file(probe.fact_subset, n_nodes=n, out_path=input_path)
+            write_label_file(probe.models or [], output_path)
+
+            scores_path = input_path.replace(".aba", ".scores.json")
+
+            entry = {
+                "graph_type":       graph_type,
+                "n_nodes":          n,
+                "density_or_m":     density_or_m,
+                "alpha":            alpha,
+                "abaf":             input_path,
+                "labels":           output_path,
+                "scores":           scores_path,
+                "n_atoms":          len(fw.all_elements()),
+                "n_assumptions":    len(fw.assumptions),
+                "n_credulous":      len(probe.credulous),
+                "instance_id":      instance_id,
+                "probe_role":       role,
+                "probe_fact_count": probe.fact_count,
+                "probe_is_sat":     probe.is_sat,
+            }
+            manifest_entries.append(entry)
 
         # ── Incremental manifest write: safe against preemption ────────────
         with open(partial_manifest_path, "w") as fh:
@@ -353,7 +373,7 @@ def print_dry_run_summary(per_node):
         )
 
 
-# ─── Full local sweep (unchanged from original) ───────────────────────────────
+# ─── Full local sweep ────────────────────────────────────────────────────────
 
 def run(dry_run=False):
     os.makedirs(INPUT_DIR,  exist_ok=True)
@@ -384,7 +404,7 @@ def run(dry_run=False):
         print(f"[cell] {cell_label}  ({instances_per_cell} instances)")
 
         for i in range(instances_per_cell):
-            seed = BASE_SEED + i
+            seed = BASE_SEED + _CELL_OFFSETS[(graph_type, n, density_or_m, alpha)] + i
             stats = per_node[n]
             stats["n_attempted"] += 1
             print(f"  i={i} seed={seed} ...", end=" ", flush=True)
@@ -392,7 +412,7 @@ def run(dry_run=False):
             t_start = time.time()
             try:
                 with time_limit(timeout_seconds):
-                    facts, credulous, models, fact_idx, solve_s = run_instance(
+                    probes, solve_s = run_instance(
                         graph_type, n, density_or_m, alpha, seed,
                     )
             except _InstanceTimeout:
@@ -400,41 +420,47 @@ def run(dry_run=False):
                 print("TIMEOUT", flush=True)
                 continue
             total_s = time.time() - t_start
-            print(f"ok ({total_s:.2f}s, solve {solve_s:.2f}s)", flush=True)
+            print(f"ok ({total_s:.2f}s, solve {solve_s:.2f}s, {len(probes)} probes)", flush=True)
 
-            input_path  = os.path.join(INPUT_DIR,  fname(graph_type, n, density, m, alpha, i))
-            output_path = os.path.join(OUTPUT_DIR, "output_" + fname(graph_type, n, density, m, alpha, i))
+            instance_id = os.path.splitext(fname(graph_type, n, density, m, alpha, i))[0]
+            first_fw = None
+            for probe in probes:
+                role = probe.role
+                input_path  = os.path.join(INPUT_DIR,  fname(graph_type, n, density, m, alpha, i, role))
+                output_path = os.path.join(OUTPUT_DIR, "output_" + fname(graph_type, n, density, m, alpha, i, role))
 
-            fw = lp_facts_to_aba_file(facts, n_nodes=n, out_path=input_path)
-            write_label_file(models, output_path)
+                fw = lp_facts_to_aba_file(probe.fact_subset, n_nodes=n, out_path=input_path)
+                write_label_file(probe.models or [], output_path)
+
+                if first_fw is None:
+                    first_fw = fw
+
+                scores_path = input_path.replace(".aba", ".scores.json")
+                manifest.append({
+                    "graph_type":       graph_type,
+                    "n_nodes":          n,
+                    "density_or_m":     density_or_m,
+                    "alpha":            alpha,
+                    "abaf":             input_path,
+                    "labels":           output_path,
+                    "scores":           scores_path,
+                    "n_atoms":          len(fw.all_elements()),
+                    "n_assumptions":    len(fw.assumptions),
+                    "n_credulous":      len(probe.credulous),
+                    "instance_id":      instance_id,
+                    "probe_role":       role,
+                    "probe_fact_count": probe.fact_count,
+                    "probe_is_sat":     probe.is_sat,
+                })
 
             stats["total_times"].append(total_s)
             stats["solve_times"].append(solve_s)
-            stats["n_assumptions"].append(len(fw.assumptions))
-
-            arr_credulous = [a for a in credulous if a.startswith("arr_")]
-            scores_path = input_path.replace(".aba", ".scores.json")
-            manifest.append({
-                "graph_type":      graph_type,
-                "n_nodes":         n,
-                "density_or_m":    density_or_m,
-                "alpha":           alpha,
-                "abaf":            input_path,
-                "labels":          output_path,
-                "scores":          scores_path,
-                "has_accepted":    len(credulous) > 0,
-                "n_atoms":         len(fw.all_elements()),
-                "n_assumptions":   len(fw.assumptions),
-                "n_credulous":     len(credulous),
-                "n_credulous_arr": len(arr_credulous),
-                "fact_idx":        fact_idx,
-                "n_facts_total":   len(facts),
-                "no_removal":      fact_idx == len(facts),
-            })
+            if first_fw is not None:
+                stats["n_assumptions"].append(len(first_fw.assumptions))
 
     with open(MANIFEST_PATH, "w") as fh:
         json.dump(manifest, fh, indent=2)
-    print(f"Manifest written: {MANIFEST_PATH}  ({len(manifest)} instances)")
+    print(f"Manifest written: {MANIFEST_PATH}  ({len(manifest)} entries)")
 
     if dry_run:
         print_dry_run_summary(per_node)
@@ -480,14 +506,15 @@ def main():
             p.error("--m required for graph-type ba")
 
         run_chunk(
-            chunk_id    = args.chunk_id,
-            graph_type  = args.graph_type,
-            n           = args.n,
-            density     = args.density,
-            m           = args.m,
-            alpha       = args.alpha,
-            start_idx   = args.start_idx,
-            end_idx     = args.end_idx,
+            chunk_id        = args.chunk_id,
+            graph_type      = args.graph_type,
+            n               = args.n,
+            density         = args.density,
+            m               = args.m,
+            alpha           = args.alpha,
+            start_idx       = args.start_idx,
+            end_idx         = args.end_idx,
+            timeout_seconds = 5400,
         )
     else:
         run(dry_run=args.dry_run)
