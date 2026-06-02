@@ -45,13 +45,15 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parent))  # project root → scr/
-sys.path.insert(0, str(_HERE))         # scripts/     → run_dggs
+
+# Role: batch convergence experiment — runs DGGS over data/abaf/*.aba, records per-file metrics.
+# Uses DGGSRunner from scr.dggs. Handles random vs fixed tau_a init; subprocess isolation with timeout.
 
 from tqdm import tqdm
 
 from scr.dependency_graph import DependencyGraph
 from scr.ABAF import ABAF
-from run_dggs import _Index, initialise_state, step
+from scr.dggs import DGGSRunner
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 INPUT_DIR       = Path("data/abaf/").resolve()
@@ -168,56 +170,26 @@ def run_dggs_collect(
     epsilon: float,
     stability_window: int,
 ) -> dict:
-    """
-    Run DGGS and collect convergence metrics.
-
-    Returns a dict with keys:
-      initial_strengths, final_strengths,
-      global_converged, prop_converged, per_arg, convergence_time,
-      num_assumptions, num_rules, num_sentences
-    """
-    idx = _Index(abaf)
-    asm, rule, claim = initialise_state(abaf)
+    """Run DGGS via DGGSRunner and collect convergence metrics for PKL storage."""
+    runner = DGGSRunner(abaf, max_iter=max_iterations, epsilon=epsilon, window=stability_window)
 
     initial_strengths = {a.name: a.tau for a in abaf.assumptions}
 
-    # per-assumption rolling change window
-    per_asm_recent: dict = {a.name: [] for a in abaf.assumptions}
-    conv_time = None
+    state  = runner.initialise()
+    result = runner.run(initial_state=state)
 
-    for t in range(1, max_iterations + 1):
-        prev_asm = dict(asm)
-        asm, rule, claim = step(abaf, idx, asm, rule, claim)
+    final_strengths = result.final_state.assumptions
+    conv_time = result.n_iterations if result.converged else None
 
-        for name in asm:
-            delta = abs(asm[name] - prev_asm[name])
-            per_asm_recent[name].append(delta)
-            if len(per_asm_recent[name]) > stability_window:
-                per_asm_recent[name].pop(0)
-
-        window_full = all(
-            len(v) == stability_window for v in per_asm_recent.values()
-        )
-        if window_full and all(max(v) < epsilon for v in per_asm_recent.values()):
-            conv_time = t
-            break
-
-    final_strengths = {name: asm[name] for name in asm}
-
-    per_arg = {
-        name: (
-            len(per_asm_recent[name]) == stability_window
-            and max(per_asm_recent[name]) < epsilon
-        )
-        for name in asm
-    }
+    # per_arg: all True when converged (global criterion), all False otherwise.
+    per_arg = {name: result.converged for name in final_strengths}
     total = len(per_arg)
     prop_conv = sum(per_arg.values()) / total if total else 0.0
 
     return {
         "initial_strengths": initial_strengths,
         "final_strengths":   final_strengths,
-        "global_converged":  conv_time is not None,
+        "global_converged":  result.converged,
         "prop_converged":    prop_conv,
         "per_arg":           per_arg,
         "convergence_time":  conv_time,
