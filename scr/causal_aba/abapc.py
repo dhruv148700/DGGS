@@ -17,7 +17,10 @@ accepted assumptions across extensions (credulous acceptance) as GNN labels.
 """
 
 import logging
+from dataclasses import dataclass, field
 from itertools import combinations
+from typing import List, Optional
+import gc
 
 import networkx as nx
 
@@ -29,6 +32,18 @@ from scr.causal_aba.enums import Fact, RelationEnum, SemanticEnum
 from scr.causal_aba.factory import ABASPSolverFactory
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Probe:
+    """One solver call recorded during the binary-search trajectory."""
+    fact_count: int
+    fact_subset: list          # sorted_facts[:fact_count]
+    is_sat: bool
+    models: Optional[list]     # list of AssumptionSet if SAT, else None
+    role: Optional[str] = None
+    credulous: Optional[set] = field(default=None)
+
 
 def get_cg_and_facts(data,
                      alpha=0.01,
@@ -122,7 +137,11 @@ def facts_from_sepset(cg, n_nodes, alpha=0.05):
 def get_extensions_from_facts(facts, n_nodes, semantics=SemanticEnum.ST):
     """
     Build the ABA encoding from facts and enumerate all stable extensions,
-    dropping the weakest fact and retrying if the encoding is unsatisfiable.
+    recording every solver call as a Probe for downstream probe selection.
+
+    Probes the full fact set first; if satisfiable, returns immediately.
+    Otherwise runs binary search for the largest satisfiable prefix, recording
+    every intermediate probe in the trajectory.
 
     Args:
         facts:     list of Fact objects from facts_from_sepset
@@ -130,11 +149,9 @@ def get_extensions_from_facts(facts, n_nodes, semantics=SemanticEnum.ST):
         semantics: SemanticEnum, ABA semantics to use (default: stable)
 
     Returns:
-        models:    list of AssumptionSet extensions from ASPforABA
-        fact_idx:  int, how many facts were used (len(facts) if no removal needed)
+        sorted_facts: list of Fact, sorted descending by score (deterministic)
+        trajectory:   list of Probe, one per solver call in search order
     """
-    # Sort descending by strength so we drop from the end (weakest first).
-    # Tiebreaker on (node1, node2, node_set) makes order fully deterministic.
     sorted_facts = sorted(
         facts,
         key=lambda x: (x.score, x.node1, x.node2, str(sorted(list(x.node_set)))),
@@ -142,44 +159,122 @@ def get_extensions_from_facts(facts, n_nodes, semantics=SemanticEnum.ST):
     )
 
     factory = ABASPSolverFactory(n_nodes=n_nodes)
-    fact_idx = len(sorted_facts)
 
-    while fact_idx > 0:
-        # factory.create_solver is non-skippable: it builds the full ABA encoding.
-        # For each fact (X, Y, S) it finds all simple paths X→Y in the graph,
-        # and per path adds path/blocked_path/non_blocking rules plus the indep
-        # assumption with its contrary. This is the d-separation→ABA encoding.
-        solver = factory.create_solver(sorted_facts[:fact_idx])
-
-        # enumerate_extensions is the ASPforABA call.
-        # k caps the number of extensions — with >6 nodes they can blow up.
+    def try_solve(k):
+        """Return models for sorted_facts[:k], or None if unsatisfiable."""
+        solver = factory.create_solver(sorted_facts[:k])
         models = solver.enumerate_extensions(semantics.value, k=50000)
+        if hasattr(solver, 'ctl'):
+            del solver.ctl
         del solver
-
-        only_empty_model = (
+        gc.collect()
+        only_empty = (
             models is not None
             and len(models) == 1
             and len(models[0].assumptions) == 0
         )
-        # Valid result: at least one non-empty extension found
-        break_condition = (
-            models is not None
-            and len(models) > 0
-            and not only_empty_model
-        )
-        if break_condition:
-            break
+        satisfiable = models is not None and len(models) > 0 and not only_empty
+        return models if satisfiable else None
 
-        fact_idx -= 1
-        logger.info(f"Encoding unsatisfiable, retrying with top {fact_idx} facts")
+    trajectory: List[Probe] = []
 
-    if fact_idx <= 0:
+    # Always probe the full set first.
+    hi = len(sorted_facts)
+    result = try_solve(hi)
+    sat = result is not None
+    trajectory.append(Probe(hi, sorted_facts[:hi], sat, result))
+    logger.info(f"Full set ({hi} facts): {'SAT' if sat else 'UNSAT'}")
+
+    if sat:
+        return sorted_facts, trajectory
+
+    # Binary search for the largest satisfiable prefix.
+    # Invariant: facts[:lo] is SAT (lo=0 trivially), facts[:hi] is UNSAT.
+    lo = 0
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        result = try_solve(mid)
+        sat = result is not None
+        trajectory.append(Probe(mid, sorted_facts[:mid], sat, result))
+        logger.info(f"{'SAT' if sat else 'UNSAT'} with top {mid} facts")
+        if sat:
+            lo = mid
+        else:
+            hi = mid
+
+    sat_probes = [p for p in trajectory if p.is_sat]
+    if not sat_probes:
         raise RuntimeError(
             "No satisfiable extension found even after dropping all facts. "
             "Check your data or alpha setting."
         )
 
-    return models, fact_idx
+    return sorted_facts, trajectory
+
+# ─── Step 2b: Select up to 4 probes from the trajectory ──────────────────────
+
+def select_probes(trajectory: List[Probe]) -> List[Probe]:
+    """
+    Choose up to 4 probes from the binary-search trajectory, deduplicated by
+    fact_count (since all probes are prefixes of the same sorted list, fact_count
+    uniquely identifies the subset).
+
+    Roles assigned in priority order (first assignment wins on ties):
+      initial_full  — the full fact set, always tried first
+      easy_sat      — first SAT probe in search order
+      boundary_sat  — largest SAT prefix (the final usable ABA encoding)
+      boundary_unsat — smallest UNSAT prefix found
+    """
+    selected: List[Probe] = []
+    seen_counts: set = set()
+
+    def try_add(probe: Probe, role: str) -> None:
+        if probe.fact_count in seen_counts:
+            return
+        seen_counts.add(probe.fact_count)
+        probe.role = role
+        selected.append(probe)
+
+    try_add(trajectory[0], "initial_full")
+
+    sat_probes = [p for p in trajectory if p.is_sat]
+    if sat_probes:
+        try_add(sat_probes[0], "easy_sat")
+
+    if sat_probes:
+        try_add(max(sat_probes, key=lambda p: p.fact_count), "boundary_sat")
+
+    unsat_probes = [p for p in trajectory if not p.is_sat]
+    if unsat_probes:
+        try_add(min(unsat_probes, key=lambda p: p.fact_count), "boundary_unsat")
+
+    return selected
+
+
+def get_probes_from_facts(facts, n_nodes, semantics=SemanticEnum.ST) -> List[Probe]:
+    """
+    Run the binary-search trajectory and return up to 4 selected Probe objects,
+    each with its role assigned and its credulous assumption set computed.
+
+    Args:
+        facts:     list of Fact objects from facts_from_sepset
+        n_nodes:   int, number of nodes
+        semantics: SemanticEnum
+
+    Returns:
+        list of Probe (1–4 entries), each with .role and .credulous set
+    """
+    _sorted_facts, trajectory = get_extensions_from_facts(facts, n_nodes, semantics)
+    probes = select_probes(trajectory)
+    for probe in probes:
+        if probe.is_sat and probe.models:
+            probe.credulous = set()
+            for model in probe.models:
+                probe.credulous.update(model.assumptions)
+        else:
+            probe.credulous = set()
+    return probes
+
 
 # ─── Step 3: Collect credulously accepted assumptions ─────────────────────────
 #
@@ -209,18 +304,21 @@ def get_credulous_assumptions_from_facts(facts, n_nodes, semantics=SemanticEnum.
         models:    list of AssumptionSet extensions (for downstream use)
         fact_idx:  int, number of facts used after removal loop
     """
-    models, fact_idx = get_extensions_from_facts(facts, n_nodes, semantics)
+    _sorted_facts, trajectory = get_extensions_from_facts(facts, n_nodes, semantics)
+
+    sat_probes = [p for p in trajectory if p.is_sat]
+    best = max(sat_probes, key=lambda p: p.fact_count)
 
     credulous = set()
-    for model in models:
+    for model in best.models:
         credulous.update(model.assumptions)
 
     logger.info(
         f"Credulous assumptions: {len(credulous)} total "
         f"({sum(1 for a in credulous if a.startswith('arr_'))} arr_*) "
-        f"from {len(models)} extensions using {fact_idx} facts"
+        f"from {len(best.models)} extensions using {best.fact_count} facts"
     )
-    return credulous, models, fact_idx
+    return credulous, best.models, best.fact_count
 
 # ─── Step 4: Full training sample generator ───────────────────────────────────
 #
