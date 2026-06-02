@@ -1,12 +1,4 @@
-from typing import Callable
-from .Sentence import Sentence, _alpha_max
-
-
-def _iota_lin(tau: float, w: float, k: float = 1.0) -> float:
-    if w >= 0:
-        return tau + (1.0 - tau) / k * w
-    else:
-        return tau + tau / k * w
+from .Sentence import Sentence
 
 
 class Assumption(Sentence):
@@ -15,13 +7,10 @@ class Assumption(Sentence):
         name: str,
         contrary: str = None,
         tau: float = 0.5,
-        iota: Callable = _iota_lin,
-        alpha: Callable = _alpha_max,
     ):
-        super().__init__(name, alpha=alpha)
+        super().__init__(name)
         self.contrary = contrary  # name of the contrary sentence
         self.tau = tau            # base strength (fixed across iterations)
-        self.iota = iota          # influence fn: (tau, w) -> new_strength
 
     def __eq__(self, other):
         if not isinstance(other, Assumption):
