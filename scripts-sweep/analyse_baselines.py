@@ -137,23 +137,23 @@ def plot_head_to_head(dggs: pd.DataFrame, bsaf: pd.DataFrame, out_dir: Path) -> 
                       color=color, alpha=0.85, edgecolor="white", linewidth=0.5)
         for bar, v in zip(bars, vals):
             ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.004,
-                    f"{v:.3f}", ha="center", va="bottom", fontsize=7)
+                    f"{v:.3f}", ha="center", va="bottom", fontsize=8)
 
     # Visual separator between DGGS and BSAF groups
     separator_x = 1.5 + width  # between config index 1 and 2
     ax.axvline(separator_x, color="black", linestyle="--",
                linewidth=1.2, alpha=0.5)
     ax.text(separator_x - 0.85, 1.02, "DGGS", transform=ax.get_xaxis_transform(),
-            fontsize=10, fontweight="bold", ha="center", color="#2166ac")
+            fontsize=11, fontweight="bold", ha="center", color="#2166ac")
     ax.text(separator_x + 0.85, 1.02, "BSAF", transform=ax.get_xaxis_transform(),
-            fontsize=10, fontweight="bold", ha="center", color="#b2182b")
+            fontsize=11, fontweight="bold", ha="center", color="#b2182b")
 
     ax.axhline(0.5, color="gray", linestyle="--", linewidth=0.8, label="Random (0.5)")
     ax.set_xticks(x + width)
-    ax.set_xticklabels(labels, fontsize=8)
-    ax.set_ylabel("Macro AUC (median per-ABAF)", fontsize=10)
-    ax.set_title("Tier-pair discrimination: DGGS vs BSAF", fontsize=10)
-    ax.legend(fontsize=9, loc="upper right")
+    ax.set_xticklabels(labels, fontsize=9)
+    ax.set_ylabel("Macro AUC (median per-ABAF)", fontsize=11)
+    ax.set_title("Tier-pair discrimination: DGGS vs BSAF", fontsize=11)
+    ax.legend(fontsize=10, loc="upper right")
     ax.set_ylim(0.45, 1.10)
     ax.yaxis.set_minor_locator(mticker.MultipleLocator(0.05))
     ax.grid(axis="y", alpha=0.3)

@@ -129,16 +129,16 @@ def plot_top5_bar(ranked: pd.DataFrame, out_dir: Path) -> None:
                       color=color, alpha=0.85, edgecolor="white", linewidth=0.5)
         for bar, v in zip(bars, vals):
             ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.005,
-                    f"{v:.3f}", ha="center", va="bottom", fontsize=7)
+                    f"{v:.3f}", ha="center", va="bottom", fontsize=8)
 
     ax.axhline(0.5, color="gray", linestyle="--", linewidth=0.8, label="Random (0.5)")
     ax.set_xticks(x + width)
-    ax.set_xticklabels(labels, fontsize=8)
-    ax.set_ylabel("Macro AUC (median per-ABAF)", fontsize=10)
+    ax.set_xticklabels(labels, fontsize=9)
+    ax.set_ylabel("Macro AUC (median per-ABAF)", fontsize=11)
     ax.set_title("Tier-pair discrimination — top 5 DGGS configurations\n"
-                 "(P = ProductBody, M = MinBody; ranked by Skep. vs Rej.)", fontsize=10)
+                 "(P = ProductBody, M = MinBody; ranked by Skep. vs Rej.)", fontsize=11)
     # Move legend to upper right to avoid clashing with bars
-    ax.legend(fontsize=9, loc="upper right")
+    ax.legend(fontsize=10, loc="upper right")
     ax.set_ylim(0.45, 1.05)
     ax.yaxis.set_minor_locator(mticker.MultipleLocator(0.05))
     ax.grid(axis="y", alpha=0.3)
@@ -196,22 +196,22 @@ def plot_heatmap(ranked: pd.DataFrame, out_dir: Path) -> None:
                 val = mat[i, j]
                 if not np.isnan(val):
                     ax.text(j, i, f"{val:.3f}", ha="center", va="center",
-                            fontsize=11, fontweight="bold",
+                            fontsize=12, fontweight="bold",
                             color="white" if val > (vmin + vmax) / 2 else "black")
 
         ax.set_xticks(range(len(claims)))
-        ax.set_xticklabels([claim_labels[c] for c in claims], fontsize=10)
+        ax.set_xticklabels([claim_labels[c] for c in claims], fontsize=11)
         ax.set_yticks(range(len(bodies)))
-        ax.set_yticklabels([body_labels[b] for b in bodies], fontsize=10)
-        ax.set_xlabel("Claim aggregation ($\\alpha_c$)", fontsize=10)
-        ax.set_title(iota_labels[iota], fontsize=11)
+        ax.set_yticklabels([body_labels[b] for b in bodies], fontsize=11)
+        ax.set_xlabel("Claim aggregation ($\\alpha_c$)", fontsize=11)
+        ax.set_title(iota_labels[iota], fontsize=12)
 
         plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04,
                      label="Mean Macro AUC (sk/rej)" if iota == iotas[-1] else "")
 
-    axes[0].set_ylabel("Body kernel ($\\zeta$)", fontsize=10)
+    axes[0].set_ylabel("Body kernel ($\\zeta$)", fontsize=11)
     fig.suptitle("Macro AUC (sk/rej) by kernel choice\n"
-                 "(marginalised over support aggregation and $k$)", fontsize=11)
+                 "(marginalised over support aggregation and $k$)", fontsize=12)
     fig.tight_layout()
 
     save(fig, out_dir, "heatmap_body_claim_iota.pdf")

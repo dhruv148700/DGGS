@@ -21,6 +21,9 @@ import pickle
 import sys
 from pathlib import Path
 
+# Role: visualisation script — loads convergence PKLs and produces four matplotlib figures.
+# Figure 4 uses DGGSRunner directly for a per-iteration strength trajectory.
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -28,7 +31,6 @@ import seaborn as sns
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parent))  # project root → scr/
-sys.path.insert(0, str(_HERE))         # scripts/     → run_dggs
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 PKL_RANDOM = Path("convergence_results_dggs/dggs_e3_d5_s5000_randinit.pkl")
@@ -222,7 +224,7 @@ def fig3_flat_nonflat(df: pd.DataFrame):
 def fig4_trajectory(df: pd.DataFrame, trajectory_file: str = None):
     from scr.dependency_graph import DependencyGraph
     from scr.ABAF import ABAF
-    from run_dggs import _Index, initialise_state, step
+    from scr.dggs import DGGSRunner
 
     if trajectory_file:
         aba_path = Path(trajectory_file)
@@ -244,19 +246,17 @@ def fig4_trajectory(df: pd.DataFrame, trajectory_file: str = None):
 
     dg = DependencyGraph()
     dg.create_from_file(str(aba_path))
-    abaf = ABAF.from_dependency_graph(dg)   # fixed 0.5 tau for clean visualisation
+    abaf   = ABAF.from_dependency_graph(dg)  # fixed 0.5 tau for clean visualisation
+    runner = DGGSRunner(abaf, max_iter=500, epsilon=1e-6, window=1)
 
-    idx = _Index(abaf)
-    asm, rule, claim = initialise_state(abaf)
-
-    # run until convergence or 500 steps
-    history = {a.name: [asm[a.name]] for a in abaf.assumptions}
+    state = runner.initialise()
+    history = {a.name: [state.assumptions[a.name]] for a in abaf.assumptions}
     for _ in range(500):
-        prev = dict(asm)
-        asm, rule, claim = step(abaf, idx, asm, rule, claim)
-        for name in asm:
-            history[name].append(asm[name])
-        if max(abs(asm[k] - prev[k]) for k in asm) < 1e-6:
+        prev  = state.assumptions
+        state = runner.iterate(state)
+        for name in state.assumptions:
+            history[name].append(state.assumptions[name])
+        if max(abs(state.assumptions[k] - prev[k]) for k in prev) < 1e-6:
             break
 
     fig, ax = plt.subplots(figsize=(10, 5))

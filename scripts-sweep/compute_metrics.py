@@ -213,6 +213,12 @@ def compute_metrics_for_config(
 
     convergence_by_abaf: Dict[str, bool] = {}
 
+    # Accumulate all rows across all batches before any per-ABAF processing.
+    # iter_batches() may split or merge row groups across batch boundaries, so
+    # processing per-ABAF stats inside the batch loop would corrupt Views 2 and 3
+    # if an ABAF's rows span multiple batches.
+    all_groups: Dict = defaultdict(lambda: {"asms": [], "sigmas": [], "conv": None})
+
     pf = _pq.ParquetFile(str(raw_parquet))
     for batch in pf.iter_batches(
         columns=["abaf_id", "assumption_id", "sigma_final", "converged"]
@@ -222,47 +228,41 @@ def compute_metrics_for_config(
         sigmas   = batch.column("sigma_final").to_pylist()
         convs    = batch.column("converged").to_pylist()
 
-        if not abaf_ids:
-            continue
-
-        # Group rows by abaf_id within this batch — iter_batches() may split
-        # or merge row groups across batch boundaries, so one batch ≠ one ABAF.
-        batch_groups: Dict = defaultdict(lambda: {"asms": [], "sigmas": [], "conv": None})
         for abaf_id, asm, sigma, conv in zip(abaf_ids, asm_ids, sigmas, convs):
-            g = batch_groups[abaf_id]
+            g = all_groups[abaf_id]
             g["asms"].append(asm)
             g["sigmas"].append(float(sigma))
             if g["conv"] is None:
                 g["conv"] = conv
 
-        for abaf_id, g in batch_groups.items():
-            convergence_by_abaf[abaf_id] = g["conv"]
-            tier_map = all_tiers.get(abaf_id, {})
+    for abaf_id, g in all_groups.items():
+        convergence_by_abaf[abaf_id] = g["conv"]
+        tier_map = all_tiers.get(abaf_id, {})
 
-            abaf_t: Dict[str, List[float]] = {t: [] for t in TIER_ORDER}
-            for asm, sigma in zip(g["asms"], g["sigmas"]):
-                tier = tier_map.get(asm, "unknown")
-                if tier in TIER_ORDER:
-                    pooled[tier].append(sigma)
-                    abaf_t[tier].append(sigma)
+        abaf_t: Dict[str, List[float]] = {t: [] for t in TIER_ORDER}
+        for asm, sigma in zip(g["asms"], g["sigmas"]):
+            tier = tier_map.get(asm, "unknown")
+            if tier in TIER_ORDER:
+                pooled[tier].append(sigma)
+                abaf_t[tier].append(sigma)
 
-            # View 2: within-ABAF AUC per pair (independent qualifying)
-            for tier_a, tier_b in TIER_PAIRS:
-                auc = _auc(abaf_t[tier_a], abaf_t[tier_b])
-                if auc is not None:
-                    per_abaf_aucs[(tier_a, tier_b)].append(auc)
+        # View 2: within-ABAF AUC per pair (independent qualifying)
+        for tier_a, tier_b in TIER_PAIRS:
+            auc = _auc(abaf_t[tier_a], abaf_t[tier_b])
+            if auc is not None:
+                per_abaf_aucs[(tier_a, tier_b)].append(auc)
 
-            # View 3: z-score if >=5 labeled and sd > 0
-            all_labeled = [s for t in TIER_ORDER for s in abaf_t[t]]
-            if len(all_labeled) >= VIEW3_MIN_LABELED:
-                abaf_mean = float(np.mean(all_labeled))
-                abaf_sd   = float(np.std(all_labeled, ddof=1))
-                if abaf_sd > 0:
-                    n_v3_abafs += 1
-                    for t in TIER_ORDER:
-                        for s in abaf_t[t]:
-                            norm[t].append((s - abaf_mean) / abaf_sd)
-                            n_v3_asms += 1
+        # View 3: z-score if >=5 labeled and sd > 0
+        all_labeled = [s for t in TIER_ORDER for s in abaf_t[t]]
+        if len(all_labeled) >= VIEW3_MIN_LABELED:
+            abaf_mean = float(np.mean(all_labeled))
+            abaf_sd   = float(np.std(all_labeled, ddof=1))
+            if abaf_sd > 0:
+                n_v3_abafs += 1
+                for t in TIER_ORDER:
+                    for s in abaf_t[t]:
+                        norm[t].append((s - abaf_mean) / abaf_sd)
+                        n_v3_asms += 1
 
     # --- convergence ---
     n_total   = len(convergence_by_abaf)

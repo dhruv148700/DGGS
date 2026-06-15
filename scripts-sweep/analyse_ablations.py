@@ -37,7 +37,7 @@ except ImportError as exc:
 
 
 INIT_ORDER  = ["neutral", "ci", "random"]
-INIT_LABELS = {"neutral": "Neutral (0.5)", "ci": "CI-scores", "random": "Random"}
+INIT_LABELS = {"neutral": "Neutral (1.0)", "ci": "CI-scores", "random": "Random"}
 METRIC      = "v2_auc_median_skeptical_vs_rejected"
 
 
@@ -116,15 +116,15 @@ def plot_ranked_bar(df: pd.DataFrame, out_dir: Path) -> None:
                       color=color, alpha=0.85, edgecolor="white", linewidth=0.5)
         for bar, v in zip(bars, vals):
             ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.004,
-                    f"{v:.3f}", ha="center", va="bottom", fontsize=6.5)
+                    f"{v:.3f}", ha="center", va="bottom", fontsize=8)
 
     ax.axhline(0.5, color="gray", linestyle="--", linewidth=0.8, label="Random (0.5)")
     ax.set_xticks(x + width)
-    ax.set_xticklabels(labels, fontsize=8)
-    ax.set_ylabel("Macro AUC (median per-ABAF)", fontsize=10)
+    ax.set_xticklabels(labels, fontsize=9)
+    ax.set_ylabel("Macro AUC (median per-ABAF)", fontsize=11)
     ax.set_title("Score-initialisation ablation — all 9 configurations\n"
-                 "(fixed kernel: prod·max·max·lin·k=1.0; ranked by Skep. vs Rej.)", fontsize=10)
-    ax.legend(fontsize=9, loc="upper right")
+                 "(fixed kernel: prod·max·max·lin·k=1.0; ranked by Skep. vs Rej.)", fontsize=11)
+    ax.legend(fontsize=10, loc="upper right")
     ax.set_ylim(0.45, 1.08)
     ax.yaxis.set_minor_locator(mticker.MultipleLocator(0.05))
     ax.grid(axis="y", alpha=0.3)
@@ -161,17 +161,17 @@ def plot_heatmap(df: pd.DataFrame, out_dir: Path) -> None:
             val = mat[i, j]
             if not np.isnan(val):
                 ax.text(j, i, f"{val:.3f}", ha="center", va="center",
-                        fontsize=12, fontweight="bold",
+                        fontsize=13, fontweight="bold",
                         color="white" if val > (vmin + vmax) / 2 else "black")
 
     ax.set_xticks(range(len(INIT_ORDER)))
-    ax.set_xticklabels([INIT_LABELS[t] for t in INIT_ORDER], fontsize=10)
+    ax.set_xticklabels([INIT_LABELS[t] for t in INIT_ORDER], fontsize=11)
     ax.set_yticks(range(len(INIT_ORDER)))
-    ax.set_yticklabels([INIT_LABELS[t] for t in INIT_ORDER], fontsize=10)
-    ax.set_xlabel("Rule score init ($\\tau_r$)", fontsize=11)
-    ax.set_ylabel("Base score init ($\\tau_a$)", fontsize=11)
+    ax.set_yticklabels([INIT_LABELS[t] for t in INIT_ORDER], fontsize=11)
+    ax.set_xlabel("Rule score init ($\\tau_r$)", fontsize=12)
+    ax.set_ylabel("Base score init ($\\tau_a$)", fontsize=12)
     ax.set_title("Macro AUC (sk/rej) by score initialisation\n"
-                 "(fixed kernel: prod·max·max·lin·k=1.0)", fontsize=10)
+                 "(fixed kernel: prod·max·max·lin·k=1.0)", fontsize=11)
     plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="Macro AUC (sk/rej)")
     fig.tight_layout()
 
@@ -212,19 +212,19 @@ def plot_marginal(df: pd.DataFrame, out_dir: Path) -> None:
                       color=colors, alpha=0.85, edgecolor="white", linewidth=0.5)
         for bar, v in zip(bars, data.values):
             ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.004,
-                    f"{v:.3f}", ha="center", va="bottom", fontsize=9)
+                    f"{v:.3f}", ha="center", va="bottom", fontsize=10)
         ax.axhline(0.5, color="gray", linestyle="--", linewidth=0.8)
         ax.set_xticks(range(len(INIT_ORDER)))
-        ax.set_xticklabels([INIT_LABELS[t] for t in INIT_ORDER], fontsize=9)
-        ax.set_title(title, fontsize=10)
-        ax.set_xlabel(xlabel, fontsize=10)
+        ax.set_xticklabels([INIT_LABELS[t] for t in INIT_ORDER], fontsize=10)
+        ax.set_title(title, fontsize=11)
+        ax.set_xlabel(xlabel, fontsize=11)
         ax.set_ylim(0.45, 1.05)
         ax.yaxis.set_minor_locator(mticker.MultipleLocator(0.05))
         ax.grid(axis="y", alpha=0.3)
 
-    axes[0].set_ylabel("Mean Macro AUC (sk/rej)", fontsize=10)
+    axes[0].set_ylabel("Mean Macro AUC (sk/rej)", fontsize=11)
     fig.suptitle("Marginal effect of score initialisation on tier separation",
-                 fontsize=11)
+                 fontsize=12)
     fig.tight_layout()
 
     save(fig, out_dir, "ablation_marginal.pdf")
