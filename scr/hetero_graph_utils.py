@@ -173,46 +173,51 @@ def create_graph(aba_file_path, plot_graph=False):
     return hetero_graph, dep_graph, assmpt_mapping
 
 
-def update_graph(dep_graph, plot_graph=False, id=1):
+def update_graph(dep_graph, plot_graph=False, id=1, atom_scores=None):
+    """Build a DGL hetero graph from the current dep_graph state.
+
+    atom_scores: optional dict {atom_name: score} — when provided, a third
+    feature column (CI-test reliability score) is appended to all node feature
+    tensors, producing shape (n, 3) instead of (n, 2).
+    """
     rules_mapping, assmpt_mapping, non_assmpt_mapping = reindex_nodes(dep_graph)
-    # print(f"{rules_mapping=}")
-    # print(f"{assmpt_mapping=}")
-    # print(f"{non_assmpt_mapping=}")
-    
+
     if len(assmpt_mapping) == 0:
         raise ValueError("No assumptions found in the ABA file")
-    
-    # Calculate node features
+
     features = dep_graph.calculate_node_features(assmpt_mapping | non_assmpt_mapping)
-    
-    # Create heterogeneous graph
+
     data_dict = create_hetero_graph(
-        dep_graph.graph, 
-        rules_mapping, 
-        assmpt_mapping, 
-        non_assmpt_mapping
+        dep_graph.graph,
+        rules_mapping,
+        assmpt_mapping,
+        non_assmpt_mapping,
     )
-    
+
     hetero_graph = dgl.heterograph(data_dict)
 
     if hetero_graph is None:
         raise ValueError("Failed to create heterogeneous graph")
-    
-    # Add node features to the graph
-    # Assumption features
-    assmpt_feat_arr = np.empty((len(assmpt_mapping), 2))
+
+    n_feat = 3 if atom_scores is not None else 2
+
+    assmpt_feat_arr = np.zeros((len(assmpt_mapping), n_feat))
     for key in assmpt_mapping:
-        assmpt_feat_arr[assmpt_mapping[key], :] = features[key]
+        idx = assmpt_mapping[key]
+        assmpt_feat_arr[idx, :2] = features[key]
+        if atom_scores is not None:
+            assmpt_feat_arr[idx, 2] = atom_scores.get(key, 0.0)
     hetero_graph.nodes['assmpt'].data['features'] = torch.tensor(assmpt_feat_arr, dtype=torch.float32)
 
-    # Non-assumption features
-    non_assmpt_feat_arr = np.empty((len(non_assmpt_mapping), 2))
+    non_assmpt_feat_arr = np.zeros((len(non_assmpt_mapping), n_feat))
     for key in non_assmpt_mapping:
-        non_assmpt_feat_arr[non_assmpt_mapping[key], :] = features[key]
+        idx = non_assmpt_mapping[key]
+        non_assmpt_feat_arr[idx, :2] = features[key]
+        if atom_scores is not None:
+            non_assmpt_feat_arr[idx, 2] = atom_scores.get(key, 0.0)
     hetero_graph.nodes['non_assmpt'].data['features'] = torch.tensor(non_assmpt_feat_arr, dtype=torch.float32)
-    
-    # Rule features (random as in training)
-    rules_arr = np.random.randn(len(rules_mapping), 2)
+
+    rules_arr = np.random.randn(len(rules_mapping), n_feat)
     hetero_graph.nodes['rule'].data['features'] = torch.tensor(rules_arr, dtype=torch.float32)
 
     if plot_graph:

@@ -6,7 +6,6 @@ No hetero-graph construction needed; DependencyGraph -> ABAF directly.
 """
 
 import argparse
-import re
 import time
 
 from scr.dependency_graph import DependencyGraph
@@ -14,84 +13,7 @@ from scr.ABAF.ABAF import ABAF
 from scr.dggs.runner import DGGSRunner
 from scr.dggs.kernels import ProductBody, MaxAggregation, LinearInfluence
 from scr.dggs.tau_utils import load_scores, build_tau_a, build_tau_r
-
-
-_marginal_indep_re = re.compile(r"^indep_(\d+)_(\d+)__$")
-_cond_dep_re       = re.compile(r"^-indep_(\d+)_(\d+)__(\d+)$")
-
-
-def _assumption_priority(name: str, sigma: float) -> tuple:
-    """
-    Selection key for argmax over non-dummy assumptions.
-
-    Primary: sigma (higher wins unconditionally).
-    Secondary tier:  indep_* (2) > arr_*/noe_* (1) > everything else (0).
-    Tertiary:  arr_ beats noe_ within the arr/noe tier.
-    Quaternary: lexicographic name for determinism.
-
-    Rationale: indep_* must be committed before v-structure rules fire;
-    blocked_path_* are auxiliary with no direct evidential content.
-    """
-    if name.startswith("indep_"):
-        tier = 1
-    elif name.startswith("arr_") or name.startswith("noe_"):
-        tier = 1
-    else:
-        tier = 0
-    arr_bias = 1 if name.startswith("arr_") else 0
-    return (tier, sigma, arr_bias, name)
-
-
-def _inject_vstructure_rules(dep_graph, verbose: bool) -> int:
-    """
-    Inject v-structure support rules into dep_graph after file load.
-
-    For each (X, Y, Z) where indep_X_Y__ is an assumption (marginal independence)
-    and -indep_X_Y__Z is a fact head (conditional dependence given Z):
-      Z is a collider; add  arr_X_Z <- indep_X_Y__, -indep_X_Y__Z
-                       and  arr_Y_Z <- indep_X_Y__, -indep_X_Y__Z
-
-    This creates a support path from CI evidence into arrow assumptions so DGGS
-    can propagate CI scores to break the symmetric arr_i_j / arr_j_i deadlock.
-    """
-    # (X, Y) -> assumption name
-    marginal: dict[tuple, str] = {}
-    for asm in dep_graph.assumptions:
-        m = _marginal_indep_re.match(asm)
-        if m:
-            marginal[(m.group(1), m.group(2))] = asm
-
-    # (X, Y, Z) -> contrary-of-conditional-indep head name, from empty-body rules only
-    cond_dep: dict[tuple, str] = {}
-    for _, (head, body) in dep_graph.rules.items():
-        if body:
-            continue
-        m = _cond_dep_re.match(head)
-        if m:
-            cond_dep[(m.group(1), m.group(2), m.group(3))] = head
-
-    next_idx = max(dep_graph.rules.keys()) + 1
-    n_injected = 0
-    for (x, y, z), dep_head in cond_dep.items():
-        if (x, y) not in marginal:
-            continue
-        indep_asm = marginal[(x, y)]
-        body = sorted([indep_asm, dep_head])
-
-        for arr in (f"arr_{x}_{z}", f"arr_{y}_{z}"):
-            if arr not in dep_graph.assumptions:
-                continue
-            dep_graph.rules[next_idx] = (arr, body)
-            if verbose:
-                print(f"[vstructure] +rule  {arr} <- {body}  (collider: {z})")
-            next_idx += 1
-            n_injected += 1
-
-    if verbose:
-        print(f"[vstructure] injected {n_injected} rules for "
-              f"{len(cond_dep)} conditional-dep facts, "
-              f"{len(marginal)} marginal-indep assumptions")
-    return n_injected
+from scr.causal_extension_utils import assumption_priority, inject_vstructure_rules
 
 
 def build_dggs_extension(
@@ -139,7 +61,7 @@ def build_dggs_extension(
 
     if verbose:
         print(f"\n[dggs] injecting v-structure rules ...")
-    n_vstructure_rules = _inject_vstructure_rules(dep_graph, verbose=verbose)
+    n_vstructure_rules = inject_vstructure_rules(dep_graph, verbose=verbose)
     # _inject_vstructure_rules mutates dep_graph.rules directly; rebuild indices.
     dep_graph._init_indices()
 
@@ -198,7 +120,7 @@ def build_dggs_extension(
             break
 
         # Argmax with type-priority tiebreak (see _assumption_priority).
-        best = max(non_dummy, key=lambda k: _assumption_priority(k, non_dummy[k]))
+        best = max(non_dummy, key=lambda k: assumption_priority(k, non_dummy[k]))
 
         ok = dep_graph.remove_accepted_assumption(best)
         if not ok:

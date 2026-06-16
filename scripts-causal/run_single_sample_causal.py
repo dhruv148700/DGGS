@@ -20,14 +20,14 @@ sys.path.insert(0, os.path.join(REPO_ROOT, "scr"))
 
 # ─── Setup ────────────────────────────────────────────────────────────────────
 
-SAMPLE_NAME = "causal_ba_n3_dna_m1_a0.01_i0_full"
+SAMPLE_NAME = "causal_ba_n5_dna_m1_a0.01_i0_bsat"
 
 INPUT_DIR  = os.path.join(REPO_ROOT, "input_data_causal")
-OUTPUT_DIR = os.path.join(REPO_ROOT, "output_data_causal")
+TIER_LABELS_DIR = os.path.join(REPO_ROOT, "dataset", "tier_labels")
 DAG_DIR    = os.path.join(REPO_ROOT, "dag_ground_truth")
 
 ABA_PATH = os.path.join(INPUT_DIR,  f"{SAMPLE_NAME}.aba")
-GT_PATH  = os.path.join(OUTPUT_DIR, f"output_{SAMPLE_NAME}.aba")
+GT_TIER_LABELS_PATH = os.path.join(TIER_LABELS_DIR, f"{SAMPLE_NAME}.json")
 
 # dag_ground_truth files strip the leading "causal_" and trailing role suffix (e.g. "_full")
 _dag_core = re.sub(r"^causal_", "", SAMPLE_NAME)
@@ -70,26 +70,27 @@ for line in aba_lines[:15]:
     print(f"    {line.rstrip()}")
 
 # ─── CHECKPOINT 2 ─────────────────────────────────────────────────────────────
-# The label file has one line per stable extension (written by write_label_file
-# in generate_data_causal.py). Each line is comma-separated assumption names.
-# An empty file means UNSAT (no stable extension exists).
+# Load tier labels from JSON. Extract assumptions labeled as "skeptical" or "credulous"
+# (ground truth in extension). Other tiers ("no_ext", "rejected") are treated as not in extension.
 print("\n[2] Loading ground-truth extensions")
 print("-" * 70)
 
-with open(GT_PATH) as fh:
-    raw_lines = [ln.strip() for ln in fh if ln.strip()]
+import json
+with open(GT_TIER_LABELS_PATH) as fh:
+    tier_labels = json.load(fh)
 
-gt_extensions = [
-    frozenset(ln.split(",")) for ln in raw_lines
-]
+gt_extension = frozenset(a for a, tier in tier_labels.items() if tier in ("skeptical", "credulous"))
 
-print(f"  file               : {GT_PATH}")
-print(f"  n stable extensions: {len(gt_extensions)}")
-if not gt_extensions:
-    print("  (UNSAT — no stable extension)")
-for idx, ext in enumerate(gt_extensions):
-    arrows = sorted(a for a in ext if arr_pattern.match(a))
-    print(f"  ext[{idx}] size={len(ext)}  arrows={arrows}")
+print(f"  file                : {GT_TIER_LABELS_PATH}")
+print(f"  total assumptions   : {len(tier_labels)}")
+print(f"  in extension (skeptical+credulous): {len(gt_extension)}")
+if not gt_extension:
+    print("  (UNSAT — no assumptions in extension)")
+else:
+    arrows = sorted(a for a in gt_extension if arr_pattern.match(a))
+    print(f"  extension size={len(gt_extension)}  arrows={arrows}")
+
+gt_extensions = [gt_extension]  # Wrap in list for compatibility with downstream code
 
 # ─── CHECKPOINT 3 ─────────────────────────────────────────────────────────────
 print("\n[3] Loading ground-truth DAG (B_true)")
@@ -110,6 +111,7 @@ extension, all_assumptions = build_extension(
     aba_file_path=ABA_PATH,
     enumeration_threshold=None,
     model_type="gcn",
+    model_path=os.path.join(REPO_ROOT, "results", "results_full_gcn_a40_b64", "best_model.pt"),
 )
 
 print(f"  total assumptions : {len(all_assumptions)}")

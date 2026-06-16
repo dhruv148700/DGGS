@@ -34,41 +34,39 @@ class ABAInferenceEngine:
     Supports both GCN and GAT models.
     """
     
-    def __init__(self, model_type, model_path, inclusion_threshold=None):
+    def __init__(self, model_type, model_path, inclusion_threshold=None,
+                 in_features=None, hidden_features=None, embedding_dim=None,
+                 num_layers=None, dropout=None):
         """
         Initialize the inference engine.
         Args:
             model_type (str): 'gcn' or 'gat'
             model_path (str): Path to the trained model file
-            inclusion_threshold (float): Optional threshold for acceptance (overrides model default)
+            inclusion_threshold (float): Optional threshold override
+            in_features, hidden_features, embedding_dim, num_layers, dropout:
+                Explicit hyperparams; fall back to DEFAULTS if None.
         """
         assert model_type in ['gcn', 'gat'], "model_type must be 'gcn' or 'gat'"
         self.model_type = model_type
         params = DEFAULTS[model_type]
-        if inclusion_threshold is not None:
-            self.threshold = inclusion_threshold
-        else:
-            self.threshold = params['threshold']
+        self.threshold = inclusion_threshold if inclusion_threshold is not None else params['threshold']
         self.enumeration_threshold = self.threshold
-        
-        # Model hyperparameters (should match training configuration)
+
+        _in   = in_features    if in_features    is not None else 2
+        _hid  = hidden_features if hidden_features is not None else params['hidden_features']
+        _emb  = embedding_dim  if embedding_dim  is not None else params['embedding_dim']
+        _lay  = num_layers     if num_layers     is not None else params['num_layers']
+        _drop = dropout        if dropout        is not None else params['dropout']
+
         if model_type == 'gcn':
             self.model = GCNLearnableModel(
-                in_features=2, 
-                hidden_features=params['hidden_features'], 
-                out_features=1, 
-                embedding_dim=params['embedding_dim'], 
-                num_layers=params['num_layers'], 
-                dropout=params['dropout']
+                in_features=_in, hidden_features=_hid, out_features=1,
+                embedding_dim=_emb, num_layers=_lay, dropout=_drop,
             )
         elif model_type == 'gat':
             self.model = GATLearnableModel(
-                in_features=2, 
-                hidden_features=params['hidden_features'], 
-                out_features=1, 
-                embedding_dim=params['embedding_dim'], 
-                num_layers=params['num_layers'], 
-                dropout=params['dropout']
+                in_features=_in, hidden_features=_hid, out_features=1,
+                embedding_dim=_emb, num_layers=_lay, dropout=_drop,
             )
         
         # Load trained model

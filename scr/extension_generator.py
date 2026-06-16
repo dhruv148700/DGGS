@@ -6,10 +6,13 @@ import time
 import json
 import argparse
 
-def build_extension(aba_file_path, enumeration_threshold, model_type, model_path=None):
-    if model_path is None:
-        model_path = f"results_final_{model_type}/trained_model.pt"
-    aba_inference_engine = ABAInferenceEngine(model_type, model_path, enumeration_threshold)
+def build_extension(aba_file_path, enumeration_threshold, model_type, model_path=None, inference_engine=None):
+    if inference_engine is None:
+        if model_path is None:
+            model_path = f"results_final_{model_type}/trained_model.pt"
+        aba_inference_engine = ABAInferenceEngine(model_type, model_path, enumeration_threshold)
+    else:
+        aba_inference_engine = inference_engine
     hetero_graph, dependency_graph, assmpt_mapping = create_graph(aba_file_path)
     all_assumptions = dependency_graph.assumptions.copy()
 
@@ -40,9 +43,8 @@ def build_extension(aba_file_path, enumeration_threshold, model_type, model_path
         result = dependency_graph.remove_accepted_assumption(assumption_name)
 
         if not result:
+            extension.discard(assumption_name)
             break
-
-        extension.add(assumption_name)
 
         if (not dependency_graph.assumptions):
             break
